@@ -260,14 +260,15 @@ def to_html(doc, repo, open_, completed):
               f'{len(completed)} of {len(all_objs)} objectives and {n_done} of {n_kr} key results complete.</p>'
               if repo else '<p class="status">Rendered without issue state.</p>')
     how = HOW_TO_READ.split("\n", 2)[2]
-    body = (f'<header>\n<p class="eyebrow">Generated from <code>roadmap.yaml</code></p>\n'
+    body = (f'<div class="masthead">\n'
             f'<h1>{inline(doc["title"])}</h1>\n<p class="revision">Latest revision: {inline(doc["revision"])}</p>\n'
-            f'{status}\n<nav class="overview" aria-label="Objectives">\n{overview}</nav>\n</header>\n'
+            f'{status}\n<nav class="overview" aria-label="Objectives">\n{overview}</nav>\n</div>\n'
             f'<section class="prose">\n<h2>Introduction</h2>\n{prose(doc["introduction"])}'
             f'<details>\n<summary>How to read this document</summary>\n{prose(how)}</details>\n</section>\n'
             f'<h2>Objectives</h2>\n' + "".join(objective(o) for o in open_)
             + (f'<h2>Completed objectives</h2>\n' + "".join(objective(o) for o in completed) if completed else ""))
-    return HTML_PAGE.replace("{title}", html.escape(doc["title"])).replace("{body}", body)
+    return (HTML_PAGE.replace("{title}", html.escape(doc["title"])).replace("{body}", body)
+            .replace("{repo}", repo or "astropy/astropy-project"))
 
 
 def render(doc, repo, output):
@@ -282,72 +283,89 @@ HTML_PAGE = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
 <style>
-/* Single reading column; objectives are stacked sections with a progress bar in their meta row. */
+/* Styled after astropy.org (pydata-sphinx-theme with the Astropy palette): dark header bar with an
+   orange rule, steel blue links, orange secondary accent, one reading column. */
 :root {
-  --bg: #f7f6f2; --surface: #fffefb; --fg: #1f2430; --muted: #646b78; --rule: #d9d6cd;
-  --accent: #d1551c; --accent-soft: #f7dcc9; --done: #2f7d4f; --done-soft: #d7ecdc; --link: #1d5aa6;
-  --display: "Newsreader", Georgia, "Times New Roman", serif;
-  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --bg: #ffffff; --fg: #222832; --muted: #5a6572; --surface: #f3f4f5; --border: #d1d5da;
+  --link: #2e6da4; --link-hover: #1f5080; --accent: #d07530; --code: #912583;
+  --success: #00843f; --success-soft: #e3f3ea;
+  --header-bg: #444444; --header-fg: #e7e7e7; --header-rule: #ff5000;
+  --footer-bg: #f6f6f6; --footer-rule: #c4c4c4;
+  --font: "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: "SFMono-Regular", Menlo, Consolas, Monaco, "Liberation Mono", "Lucida Console", monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #15181f; --surface: #1d2129; --fg: #e8e6e0; --muted: #9aa1ad; --rule: #333945;
-  --accent: #e8773d; --accent-soft: #4a2a19; --done: #5cb57f; --done-soft: #1e3b2a; --link: #7fb0ee; color-scheme: dark } }
+  --bg: #222222; --fg: #ced6dd; --muted: #9aa5b1; --surface: #333333; --border: #4a4a4a;
+  --link: #5b9fd6; --link-hover: #4a85bc; --accent: #e08a42; --code: #f3c7ee;
+  --success: #5fb488; --success-soft: #1f3a2b; --footer-bg: #282828; --footer-rule: #666666; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #15181f; --surface: #1d2129; --fg: #e8e6e0; --muted: #9aa1ad; --rule: #333945;
-  --accent: #e8773d; --accent-soft: #4a2a19; --done: #5cb57f; --done-soft: #1e3b2a; --link: #7fb0ee; color-scheme: dark }
+  --bg: #222222; --fg: #ced6dd; --muted: #9aa5b1; --surface: #333333; --border: #4a4a4a;
+  --link: #5b9fd6; --link-hover: #4a85bc; --accent: #e08a42; --code: #f3c7ee;
+  --success: #5fb488; --success-soft: #1f3a2b; --footer-bg: #282828; --footer-rule: #666666; color-scheme: dark }
 * { box-sizing: border-box }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); padding-block: 2.5rem 4rem; padding-inline: 16px }
-main { max-width: 46rem; margin-inline: auto }
-a { color: var(--link); text-underline-offset: 2px }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 var(--font); display: flex; flex-direction: column; min-height: 100vh }
+a { color: var(--link); text-decoration: none }
+a:hover { color: var(--link-hover); text-decoration: underline }
 a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
-code { font: 0.9em var(--mono) }
-h1, h2, h3 { font-family: var(--display); font-weight: 500; line-height: 1.15; text-wrap: balance; margin: 0 }
-h1 { font-size: clamp(2rem, 5vw, 2.8rem) }
-h2 { font-size: 1.5rem; margin-block: 3rem 1.25rem; padding-bottom: .4rem; border-bottom: 1px solid var(--rule) }
-h3 { font-size: 1.3rem; font-weight: 600 }
-header { display: grid; gap: .6rem }
-.eyebrow { margin: 0; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
-.revision { margin: 0; color: var(--muted) }
-.status { margin: 0; font-size: .95rem }
+code { font: 0.9em var(--mono); color: var(--code) }
+.site { background: var(--header-bg); border-bottom: 3px solid var(--header-rule); color: var(--header-fg) }
+.site .inner { max-width: 60rem; margin-inline: auto; padding-inline: 16px; height: 3.5rem; display: flex; align-items: center; gap: 1.25rem }
+.site img { height: 2.2rem; width: auto; display: block }
+.site nav { display: flex; gap: 1.2rem; margin-left: auto; font-size: 1rem }
+.site nav a { color: var(--header-fg) }
+.site nav a:hover { color: var(--header-rule); text-decoration: none }
+main { width: 100%; max-width: 60rem; margin-inline: auto; padding-inline: 16px; padding-block: 2.5rem 4rem; flex: 1 }
+h1, h2, h3 { font-weight: 600; line-height: 1.2; text-wrap: balance; margin: 0 }
+h1 { font-size: clamp(2rem, 5vw, 2.625rem) }
+h2 { font-size: 1.75rem; margin-block: 3rem 1.25rem; padding-bottom: .35rem; border-bottom: 1px solid var(--border) }
+h3 { font-size: 1.35rem }
+.masthead { display: grid; gap: .5rem }
+.revision, .status { margin: 0; color: var(--muted) }
+.status { color: var(--fg) }
 .overview { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem }
-.tile { display: grid; gap: .3rem; width: 4.6rem; padding: .45rem .5rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; text-decoration: none; color: inherit }
-.tile:hover { border-color: var(--accent) }
-.tile.complete .fill { background: var(--done) }
-.obj-id, .kr-id { font: 500 .8rem/1 var(--mono); color: var(--accent); letter-spacing: .02em }
+.tile { display: grid; gap: .3rem; width: 4.6rem; padding: .45rem .5rem; background: var(--surface); border: 1px solid var(--border); border-radius: .25rem; color: inherit }
+.tile:hover { border-color: var(--accent); text-decoration: none }
+.obj-id, .kr-id { font: 600 .82rem/1 var(--mono); color: var(--code) }
 .prose p { max-width: 65ch; margin-block: 0 1rem }
-details { border-left: 3px solid var(--rule); padding-left: 1rem }
-summary { cursor: pointer; font-weight: 500; margin-bottom: .75rem }
-.objective { padding-block: 1.5rem; border-top: 1px solid var(--rule) }
+details { border-left: 3px solid var(--border); padding-left: 1rem; margin-top: 1.25rem }
+summary { cursor: pointer; font-weight: 600; margin-bottom: .75rem }
+.objective { padding-block: 1.5rem; border-top: 1px solid var(--border) }
 .objective:first-of-type { border-top: 0 }
-.objective h3 .obj-id { font-size: .9rem; vertical-align: .25em; margin-right: .3rem }
-.objective.complete .obj-id, .objective.complete .fill, .tile.complete .obj-id { color: var(--done); background: var(--done) }
-.objective.complete .obj-id, .tile.complete .obj-id { background: none }
-.meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin-block: .6rem 1rem; font-size: .9rem; color: var(--muted) }
-.chip { padding: .1rem .55rem; border-radius: 999px; font-size: .78rem; font-weight: 500; text-transform: capitalize; background: var(--surface); border: 1px solid var(--rule) }
+.objective h3 .obj-id { font-size: .95rem; vertical-align: .2em; margin-right: .35rem }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin-block: .6rem 1rem; font-size: .95rem; color: var(--muted) }
+.chip { padding: .05rem .6rem; border-radius: .25rem; font-size: .8rem; font-weight: 600; text-transform: capitalize; background: var(--surface); border: 1px solid var(--border); color: var(--fg) }
 .chip-high { color: var(--accent); border-color: var(--accent) }
 .progress { display: inline-flex; align-items: center; gap: .5rem; min-width: 10rem; flex: 1 }
-.bar { flex: 1; height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden }
-.fill { display: block; height: 100%; background: var(--accent); transition: width .4s }
-.count { font: 500 .9rem var(--mono); color: var(--fg); font-variant-numeric: tabular-nums }
-.of { color: var(--muted) }
+.bar { flex: 1; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden }
+.fill { display: block; height: 100%; background: var(--accent) }
+.complete .fill { background: var(--success) }
+.count { font: 600 .9rem var(--mono); color: var(--fg); font-variant-numeric: tabular-nums }
+.of { color: var(--muted); font-weight: 400 }
 .krs { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem }
 .krs li { display: grid; grid-template-columns: 1.1rem auto 1fr; gap: .6rem; align-items: baseline; min-width: 0 }
-.mark { width: .95rem; height: .95rem; border-radius: 50%; border: 1.5px solid var(--muted); align-self: start; margin-top: .3rem; position: relative }
-.done .mark { background: var(--done); border-color: var(--done) }
-.done .mark::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) }
+.mark { width: 1rem; height: 1rem; border-radius: .2rem; border: 1.5px solid var(--muted); align-self: start; margin-top: .35rem; position: relative }
+.done .mark { background: var(--success); border-color: var(--success) }
+.done .mark::after { content: ""; position: absolute; left: 4.5px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) }
 .done .kr-text { color: var(--muted) }
 .kr-text { min-width: 0 }
-.kr-text .issue { font-size: .85em; white-space: nowrap }
-@media (prefers-reduced-motion: reduce) { .fill { transition: none } }
+.kr-text .issue { font-size: .88em; white-space: nowrap }
+footer { background: var(--footer-bg); border-top: 1px solid var(--footer-rule); color: var(--muted); font-size: .9rem }
+footer .inner { max-width: 60rem; margin-inline: auto; padding-inline: 16px; padding-block: 1.25rem }
 </style>
 </head>
 <body>
+<header class="site">
+<div class="inner">
+<a href="https://www.astropy.org/" aria-label="Astropy"><img src="astropy_project_logo.svg" alt="Astropy"></a>
+<nav><a href="https://www.astropy.org/">astropy.org</a><a href="https://github.com/{repo}">GitHub</a></nav>
+</div>
+</header>
 <main>
 {body}
 </main>
+<footer><div class="inner">Generated from <code>roadmap.yaml</code> by <code>roadmap.py</code>. Objectives and key results are maintained by the Astropy Strategic Planning and Organizing Committee.</div></footer>
 </body>
 </html>
 """
