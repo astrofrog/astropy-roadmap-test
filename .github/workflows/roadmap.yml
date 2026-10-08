@@ -1,0 +1,57 @@
+# Keeps the roadmap issues and the rendered document in step with roadmap.yaml.
+#
+# On a pull request: validate the YAML and refuse hand edits to the generated
+# document. On a push to main, weekly, or on demand: create or update the
+# issues from the YAML, then render the document with the current issue state
+# and commit it if it changed.
+name: Roadmap
+
+on:
+  pull_request:
+    paths: [roadmap.yaml, roadmap.py, roadmap-2026.md]
+  push:
+    branches: [main]
+    paths: [roadmap.yaml, roadmap.py]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: pip install pyyaml
+      - run: python roadmap.py validate roadmap.yaml
+      - name: Refuse hand edits to the generated document
+        run: |
+          if ! git diff --quiet origin/${{ github.base_ref }}...HEAD -- roadmap-2026.md; then
+            echo "roadmap-2026.md is generated from roadmap.yaml; edit the YAML instead"
+            exit 1
+          fi
+
+  sync:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyyaml
+      - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --doc roadmap-2026.md --yes
+      - run: python roadmap.py render roadmap.yaml roadmap-2026.md --repo ${{ github.repository }}
+      - name: Commit the rendered document if it changed
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add roadmap-2026.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Render the roadmap from roadmap.yaml and issue state"
+            git push
+          fi

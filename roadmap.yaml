@@ -1,0 +1,133 @@
+title: The Astropy Roadmap
+revision: October 2026 (draft, proof of concept)
+introduction: |
+  This Roadmap captures the high level objectives that the Astropy Project aims to achieve to improve the health and stability of the Project, together with the key results we will use to measure progress towards each objective. It is maintained by the Strategic Planning and Organizing Committee (SPOC) and is revisited at least once a year at the Astropy coordination meeting, and at any time via pull requests to this repository.
+
+  The Roadmap is used to prioritize the allocation of Project resources. In particular, funding requests submitted in response to the Project's funding calls are asked to identify which key results they address.
+objectives:
+
+- id: O1
+  title: Improve support for reading and writing ASDF files, optionally with GWCS coordinates, in the astropy core and coordinated packages
+  key_results:
+  - id: R1.1
+    text: Publish a table listing, for the core and coordinated packages, every function and method that accepts FITS files as input or output, either as filenames or as HDU objects, and whether it also accepts ASDF filenames or objects.
+  - id: R1.2
+    text: Publish a list of the cases where support for ASDF and GWCS is not currently possible without significant upstream work in astropy, asdf-astropy, or the ASDF standard.
+  - id: R1.3
+    text: Add support for ASDF and GWCS in at least 90% of the remaining cases where this is technically feasible given the current ecosystem.
+
+- id: O2
+  title: Develop and implement a modern and maintainable strategy for FITS that improves performance and capabilities
+  key_results:
+  - id: R2.1
+    text: Publish an APE outlining the plan to improve the performance and long-term maintainability of FITS support within the Astropy Project.
+  - id: R2.2
+    text: Develop a set of benchmarks that encapsulate the performance targets we want to achieve, for example constant time to open files as file sizes grow.
+  - id: R2.3
+    text: Make astropy's FITS support competitive with other packages as measured by the benchmarks in R2.2.
+  - id: R2.4
+    text: Increase the number of active FITS maintainers to at least two and decrease the mean age of open FITS-related issues by one month.
+  - id: R2.5
+    text: Ensure that new FITS-related issues receive a response within one release cycle.
+
+- id: O3
+  title: Provide support for reading and writing spectra using the IVOA SpectrumDM in specutils
+  key_results:
+  - id: R3.1
+    text: specutils can read any SpectrumDM-compatible VOTable, demonstrated using at least one spectrum downloaded from each of at least two different archives.
+  - id: R3.2
+    text: specutils can write a Spectrum object to a SpectrumDM-compliant VOTable given sufficient metadata, including validation that gives feedback to the user when the metadata is insufficient.
+  - id: R3.3
+    text: Reading and writing as in R3.1 and R3.2 are demonstrated, including validation, for both the FITS and the XML serializations specified by SpectrumDM.
+
+- id: O4
+  title: Make astropy.units.Quantity a modern part of the Python array ecosystem by supporting any array-API-compliant backend
+  key_results:
+  - id: R4.1
+    text: A new Quantity class that wraps any array-API-compliant array is merged to main with a stable, documented public API, building on the existing prototype.
+  - id: R4.2
+    text: The Quantity test suite runs in CI against NumPy and at least three other backends, including array-api-strict with a non-CPU device, with at least 90% of the suite passing for each.
+  - id: R4.3
+    text: All core array-API operations on Quantity, including arithmetic, ufuncs, indexing and broadcasting, produce correctly unit-propagated results for every tested backend.
+  - id: R4.4
+    text: Every Quantity behaviour that assumes NumPy array internals and conflicts with array-API compliance is deprecated, each with a migration note in the changelog.
+  - id: R4.5
+    text: An "Array backends" guide is published in the astropy documentation with end-to-end worked examples for each supported backend, covering unit-aware computation and device transfer.
+
+- id: O5
+  title: Provide supported, public ways of serializing astropy objects
+  key_results:
+  - id: R5.1
+    text: Publish a list of astropy classes together with whether, and how, each can currently be serialized.
+  - id: R5.2
+    text: Decide on and document a single supported serialization approach, taking into account the existing representation dictionaries in astropy core, astropydantic, and the pydantic integration in stellarphot.
+  - id: R5.3
+    text: Implement the chosen approach for every class in the list from R5.1 that is not already covered.
+
+- id: O6
+  title: Improve the robustness and reliability of performance benchmarking
+  key_results:
+  - id: R6.1
+    text: Set up a GitHub self-hosted runner on dedicated hardware, where benchmarks can be bound to a specific core, with full documentation of how it was set up.
+  - id: R6.2
+    text: Switch the astropy core benchmarking job to this runner and demonstrate stable timings in line with local dedicated hardware.
+  - id: R6.3
+    text: Document how to set up similar benchmarking jobs in other packages in the astropy organization and advertise this to coordinated package maintainers.
+
+- id: O7
+  title: Increase the visibility and usage of coordinated packages beyond the core package
+  key_results:
+  - id: R7.1
+    text: Make it possible to install groups of ecosystem packages by use case, for example `pip install astropy[photometry]` or `pip install astropy[spectroscopy]`.
+  - id: R7.2
+    text: The astropy.org landing page highlights the ecosystem and lets visitors navigate coordinated and affiliated packages by use case or domain rather than only presenting the core package.
+  - id: R7.3
+    text: Usage metrics, such as web analytics on documentation pages, are tracked for every coordinated package.
+  - id: R7.4
+    text: Monthly documentation traffic for at least three coordinated packages is 50% higher than when tracking started.
+
+- id: O8
+  title: Identify the barriers to making Astropy work easily in non-cloud HPC contexts
+  key_results:
+  - id: R8.1
+    text: Review and categorize the HPC-related issues already reported across the astropy organization.
+  - id: R8.2
+    text: Develop and carry out a survey of HPC users to identify the challenges they face when using Astropy.
+  - id: R8.3
+    text: Every barrier identified in R8.1 and R8.2 has an open issue in the relevant repository.
+  - id: R8.4
+    text: Publish a list of major HPC users of Astropy, based on survey responses, who can be consulted on future work.
+
+- id: O9
+  title: Identify the barriers to making Astropy work easily in cloud contexts
+  key_results:
+  - id: R9.1
+    text: Review and categorize the cloud-related issues already reported across the astropy organization.
+  - id: R9.2
+    text: Develop and carry out a survey of cloud users to identify the challenges they face when using Astropy.
+  - id: R9.3
+    text: Every barrier identified in R9.1 and R9.2 has an open issue in the relevant repository.
+  - id: R9.4
+    text: Publish a list of major cloud users of Astropy, based on survey responses, who can be consulted on future work.
+
+- id: O10
+  title: Develop a sustainable and recurring mechanism for measuring and understanding the Astropy user and developer communities, and for identifying gaps in the ecosystem for common astronomy tasks
+  key_results:
+  - id: R10.1
+    text: Establish or assign a committee or designated role with explicit responsibility for tracking the health of the Astropy user and developer communities.
+  - id: R10.2
+    text: Define a set of community health indicators for both the user and developer communities, covering for example demographics, use cases, needs, contributor statistics, and satisfaction.
+  - id: R10.3
+    text: Run a user survey on a recurring cadence, for example every two years, that measures the indicators in R10.2 and collects feedback on missing functionality.
+  - id: R10.4
+    text: Translate the missing functionality identified in R10.3 into new objectives and key results in this Roadmap.
+
+- id: O11
+  title: Create a process to identify and ensure progress on longstanding issues that should be high priority
+  key_results:
+  - id: R11.1
+    text: Establish or assign a committee or designated role with explicit responsibility for identifying longstanding high-priority issues and overseeing progress on them.
+  - id: R11.2
+    text: Produce an initial list of longstanding high-priority issues and translate them into objectives and key results in this Roadmap.
+  - id: R11.3
+    text: Review progress on these issues at least yearly at the coordination meeting.
