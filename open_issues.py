@@ -24,19 +24,17 @@ def run(*cmd, payload=None):
 
 
 def parse(text):
-    """Return [(category, objective id, title, line number, [(kr id, kr text, line number), ...]), ...].
+    """Return [(objective id, title, line number, [(kr id, kr text, line number), ...]), ...].
 
     A trailing issue link on a key result line, as written back by this script, is not part of the text.
     Either wrapper, ``[...]`` or the earlier ``(...)``, is recognized.
     """
-    objectives, category = [], None
+    objectives = []
     for lineno, line in enumerate(text.splitlines()):
-        if m := re.match(r"## (.+)", line):
-            category = m[1]
-        elif m := re.match(r"### (O\d+) (.+)", line):
-            objectives.append((category, m[1], m[2], lineno, []))
+        if m := re.match(r"### (O\d+) (.+)", line):
+            objectives.append((m[1], m[2], lineno, []))
         elif m := re.match(r"- \*\*(R\d+\.\d+)\*\* (.+?)(?: [(\[]\[#\d+\]\([^)]*\)[)\]])?$", line):
-            objectives[-1][4].append((m[1], m[2], lineno))
+            objectives[-1][3].append((m[1], m[2], lineno))
     return objectives
 
 
@@ -51,7 +49,7 @@ def main():
 
     text = open(args.roadmap).read()
     objectives = parse(text)
-    n_kr = sum(len(o[4]) for o in objectives)
+    n_kr = sum(len(o[3]) for o in objectives)
     if not dry:
         answer = input(f"Create up to {len(objectives)} objective issues and {n_kr} key result "
                        f"sub-issues in {repo}? [y/N] ")
@@ -78,26 +76,23 @@ def main():
         return issue["number"], issue["id"]
 
     labels = {"roadmap": "0e8a16", "objective": "1d76db", "key result": "5319e7"}
-    # GitHub label names may not contain commas.
-    labels |= {f"category: {c.lower().replace(',', '')}": "bfd4f2" for c, *_ in objectives}
     for name, color in labels.items():
         dry or run("label", "create", name, "-R", repo, "--color", color, "--force")
 
     tracking, links = [], []
-    for category, oid, title, lineno, key_results in objectives:
+    for oid, title, lineno, key_results in objectives:
         anchor = re.sub(r"[^\w\s-]", "", f"{oid} {title}".lower()).replace(" ", "-")
-        body = (f"**Category:** {category}\n**Roadmap entry:** {url}#{anchor}\n\n## Key results\n\n"
+        body = (f"**Roadmap entry:** {url}#{anchor}\n\n## Key results\n\n"
                 + "".join(f"- **{rid}** {rtext}\n" for rid, rtext, _ in key_results)
                 + "\nEach key result is tracked as a sub-issue of this issue. Changes to the "
                 "wording or priority of the objective are made by pull request to the roadmap; "
                 "progress updates and links to funded work and implementation PRs belong here.\n")
-        category_label = f"category: {category.lower().replace(',', '')}"
-        number, _ = create(f"{oid}: {title}", body, ["roadmap", "objective", category_label])
+        number, _ = create(f"{oid}: {title}", body, ["roadmap", "objective"])
         for rid, rtext, kr_lineno in key_results:
             body = (f"Key result **{rid}** of objective **{oid}** (#{number}): {rtext}\n\n"
                     f"**Roadmap entry:** {url}#{anchor}\n\nClose this issue when the key result "
                     "has been achieved, with a comment pointing at the evidence.\n")
-            child, child_id = create(f"{rid}: {rtext}", body, ["roadmap", "key result", category_label])
+            child, child_id = create(f"{rid}: {rtext}", body, ["roadmap", "key result"])
             links.append((kr_lineno, child))
             # Attach newly created key results; the endpoint wants the database id, not the number.
             if child_id is not None and not dry:
