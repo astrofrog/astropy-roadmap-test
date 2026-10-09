@@ -263,6 +263,13 @@ def pull(path, repo, dry):
     doc = rt.load(Path(path).read_text())
     changes = []
 
+    def insert(entry, pos, key, value):
+        """Insert a key at a position, keeping any blank line that followed the old last key."""
+        last = list(entry)[-1]
+        entry.insert(pos, key, value)
+        if list(entry)[-1] == key and last in entry.ca.items:
+            entry.ca.items[key] = entry.ca.items.pop(last)
+
     def record(entry):
         issue = state.get(entry["id"])
         if not issue:
@@ -273,17 +280,17 @@ def pull(path, repo, dry):
             else None
         )
         if entry.get("issue") != issue["number"]:
-            entry.insert(
-                list(entry).index("key_results") if "key_results" in entry else len(entry),
-                "issue",
-                issue["number"],
-            )
+            pos = list(entry).index("key_results") if "key_results" in entry else len(entry)
+            insert(entry, pos, "issue", issue["number"])
             changes.append(f"{entry['id']} is tracked in #{issue['number']}")
         if closed and entry.get("completed") != closed:
-            entry.insert(list(entry).index("issue") + 1, "completed", closed)
+            insert(entry, list(entry).index("issue") + 1, "completed", closed)
             changes.append(f"{entry['id']} completed on {closed}")
         elif not closed and "completed" in entry:
+            comment = entry.ca.items.pop("completed", None)
             del entry["completed"]
+            if comment:
+                entry.ca.items[list(entry)[-1]] = comment
             changes.append(f"{entry['id']} reopened, no longer complete")
 
     for obj in doc["objectives"]:
