@@ -19,12 +19,13 @@ Path(__file__).with_name("index.md").write_text(roadmap.render(doc, text, None))
 project = text["title"]
 copyright = "The Astropy Developers"
 extensions = ["myst_parser"]
-myst_enable_extensions = ["tasklist"]
 myst_heading_anchors = 3
 
 html_theme = "astropy-unified"
 html_title = ""
 html_sidebars = {"**": []}
+html_static_path = ["_static"]
+html_css_files = ["roadmap.css"]
 html_theme_options = {"show_prev_next": False}
 # Read the Docs sets the clone URL; use it for the GitHub link in the header.
 if clone := os.environ.get("READTHEDOCS_GIT_CLONE_URL"):

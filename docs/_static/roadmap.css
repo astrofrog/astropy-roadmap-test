@@ -1,0 +1,6 @@
+/* Completion notes written by roadmap.py at the end of key result lines. */
+.completed {
+  color: var(--pst-color-success);
+  font-weight: 600;
+  white-space: nowrap;
+}

@@ -153,7 +153,7 @@ def issues(repo):
         "-L",
         "1000",
         "--json",
-        "number,title,body,state,labels",
+        "number,title,body,state,labels,closedAt",
     )
     return {m[1]: issue for issue in found if (m := re.match(r"(O\d+|R\d+\.\d+):", issue["title"]))}
 
@@ -236,6 +236,7 @@ def collect(doc, repo):
         return {
             **entry,
             "done": bool(issue and issue["state"] == "CLOSED"),
+            "completed": issue["closedAt"][:10] if issue and issue["state"] == "CLOSED" else None,
             "number": issue and issue["number"],
             "url": issue and f"https://github.com/{repo}/issues/{issue['number']}",
         }
@@ -249,16 +250,23 @@ def collect(doc, repo):
     return ([o for o in objectives if not o["done"]], [o for o in objectives if o["done"]])
 
 
-def to_markdown(doc, text, repo, open_, completed):
+def to_markdown(doc, text, repo, open_, completed_):
+    def completed(entry):
+        """A note that the entry is done; the class is styled by the documentation build."""
+        return f'<span class="completed">(completed on {entry["completed"]})</span>'
+
     def objective(obj):
         notes = [f"Priority: {obj['priority']}"]
         if obj["number"]:
             notes.append(f"Tracking issue: [#{obj['number']}]({obj['url']})")
         notes.append(f"{obj['n_done']} of {len(obj['key_results'])} key results complete")
-        out = [f"### {obj['id']} {obj['title']}", "", f"*{' · '.join(notes)}*", ""]
+        if obj["done"]:
+            notes.append(completed(obj))
+        out = [f"### {obj['id']}: {obj['title']}", "", f"*{' · '.join(notes)}*", ""]
         for kr in obj["key_results"]:
             link = f" [[#{kr['number']}]({kr['url']})]" if kr["number"] else ""
-            out.append(f"- [{'x' if kr['done'] else ' '}] **{kr['id']}** {kr['text']}{link}")
+            done = f" {completed(kr)}" if kr["done"] else ""
+            out.append(f"- **{kr['id']}** {kr['text']}{link}{done}")
         return out + [""]
 
     out = [
@@ -279,9 +287,9 @@ def to_markdown(doc, text, repo, open_, completed):
     ]
     for obj in open_:
         out += objective(obj)
-    if completed:
+    if completed_:
         out += ["## Completed objectives", ""]
-        for obj in completed:
+        for obj in completed_:
             out += objective(obj)
     return "\n".join(out) + f"\n*{text['footer']}*\n"
 
