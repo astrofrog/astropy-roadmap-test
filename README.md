@@ -13,4 +13,7 @@ Astropy Strategic Planning and Organizing Committee (SPOC).
   rendering it from the YAML at build time.
 
 Progress is tracked in the issues: closing a key result issue marks it done, and the SPOC
-closes an objective issue when the objective has been achieved.
+closes an objective issue when the objective has been achieved. A weekly workflow records
+issue numbers and completion dates back into `roadmap.yaml` and opens a pull request with
+the result, so the file is a complete record and the page can be built without GitHub
+access. The `issue` and `completed` fields are written by that workflow, not by hand.

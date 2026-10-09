@@ -1,8 +1,14 @@
-# Keeps the roadmap issues in step with roadmap.yaml.
+# Keeps the roadmap issues in step with roadmap.yaml, and records status back.
 #
 # On a pull request: validate the YAML files. On a push to main, weekly, or on
-# demand: create or update the issues from the YAML. The web page is built by
-# Read the Docs from the YAML directly, so nothing generated is committed.
+# demand: create or update the issues from the YAML, pull issue numbers and
+# completion dates back into roadmap.yaml, and open or update a pull request
+# with the result for the SPOC to merge. The web page is built by Read the Docs
+# from the YAML, so nothing generated is committed.
+#
+# The repository setting "Allow GitHub Actions to create and approve pull
+# requests" must be enabled. Pull requests opened with the default token do
+# not trigger the validate job; use a GitHub App token to change that.
 name: Roadmap
 
 on:
@@ -21,18 +27,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pip install pyyaml jinja2
+      - run: pip install ruamel.yaml jinja2
       - run: python roadmap.py validate roadmap.yaml
 
   sync:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
+      contents: write
       issues: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - run: pip install pyyaml jinja2
+      - run: pip install ruamel.yaml jinja2
       # Replace the site URL with the Read the Docs address once the project exists.
-      - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --site https://astropy-roadmap.readthedocs.io/en/latest/ --yes
+      - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --site https://astropy-roadmap.readthedocs.io/en/latest/ --yes | tee changes.md
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: roadmap-status
+          add-paths: roadmap.yaml
+          commit-message: Record roadmap status from GitHub issues
+          title: Record roadmap status from GitHub issues
+          body-path: changes.md
+          delete-branch: true

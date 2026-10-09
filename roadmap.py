@@ -3,25 +3,27 @@
 
     python roadmap.py validate roadmap.yaml
     python roadmap.py sync roadmap.yaml --repo OWNER/REPO --site URL [--dry-run] [--yes]
+    python roadmap.py pull roadmap.yaml --repo OWNER/REPO [--dry-run]
     python roadmap.py render roadmap.yaml roadmap.md [--repo OWNER/REPO] [--check]
 
 ``roadmap.yaml`` defines the objectives and key results; ``text.yaml`` next to
 it (or the file given with ``--text``) holds the page wording and the issue
-body templates. Both are edited only by pull request. An entry may record its
-tracking issue number as ``issue`` and the date it was done as ``completed``;
-rendering uses these, and live issue state overrides them when ``--repo`` is
-given. Identifiers are never renumbered or reused; an entry that no
-longer applies is removed, leaving a gap. Progress lives in GitHub, with one
-issue per objective and one sub-issue per key result, and a closed issue is
-the record that its entry is done.
+body templates. Both are edited only by pull request. Identifiers are never
+renumbered or reused; an entry that no longer applies is removed, leaving a
+gap. Progress lives in GitHub, with one issue per objective and one sub-issue
+per key result, and a closed issue is the record that its entry is done.
 
 ``validate`` checks the structure of both files. ``sync`` makes the issues
-match it: missing ones are created, titles, bodies and labels are updated, and
-issues for entries no longer in the file are closed. It never deletes.
-``render`` writes the markdown document from the YAML and, with ``--repo``,
-the issue state; ``--check`` instead fails if the document on disk is not what
-would be written. The documentation build in ``docs/`` calls it at build time.
-Both need an authenticated ``gh`` when ``--repo`` is given.
+match the YAML: missing ones are created, titles, bodies and labels are
+updated, and issues for entries no longer in the file are closed; it never
+deletes. It then does what ``pull`` does on its own: records each entry's
+tracking issue number as ``issue`` and the date its issue was closed as
+``completed`` in the YAML file, so the file is a complete record and rendering
+needs no network. Those two fields are written by the script, not by hand.
+``render`` writes the markdown document from the YAML, or from live issue
+state with ``--repo``; ``--check`` instead fails if the document on disk is
+not what would be written. The documentation build in ``docs/`` calls it at
+build time. ``gh`` must be authenticated whenever ``--repo`` is given.
 """
 
 import argparse
@@ -32,7 +34,9 @@ import subprocess
 from pathlib import Path
 
 import jinja2
-import yaml
+from ruamel.yaml import YAML, YAMLError
+
+yaml = YAML(typ="safe")
 
 LABELS = {"roadmap": "0e8a16", "objective": "1d76db", "key result": "5319e7"}
 PRIORITIES = ("high", "medium", "low")
@@ -58,8 +62,8 @@ def run(*cmd, payload=None):
 def load(path):
     """Return the parsed YAML file, or exit listing every structural problem."""
     try:
-        doc = yaml.safe_load(Path(path).read_text())
-    except yaml.YAMLError as exc:
+        doc = yaml.load(Path(path).read_text())
+    except YAMLError as exc:
         raise SystemExit(
             f"{path}: not valid YAML (an unquoted colon in a title is the usual cause)\n{exc}"
         )
@@ -98,6 +102,10 @@ def load(path):
 
     if not isinstance(doc.get("revision"), str):
         errors.append("top level: 'revision' must be a string")
+    if "status_as_of" in doc and not isinstance(doc["status_as_of"], datetime.date):
+        errors.append("top level: 'status_as_of' must be a date")
+    if "repository" in doc and not isinstance(doc["repository"], str):
+        errors.append("top level: 'repository' must be a string such as astropy/astropy-project")
     objectives = doc.get("objectives")
     if not isinstance(objectives, list):
         raise SystemExit(f"{path}: 'objectives' must be a list")
@@ -128,8 +136,8 @@ def load(path):
 def load_text(path):
     """Return the parsed wording file, or exit listing every problem."""
     try:
-        text = yaml.safe_load(Path(path).read_text())
-    except yaml.YAMLError as exc:
+        text = yaml.load(Path(path).read_text())
+    except YAMLError as exc:
         raise SystemExit(f"{path}: not valid YAML\n{exc}")
     errors = []
     for field in ("title", "footer"):
@@ -236,6 +244,59 @@ def sync(doc, text, repo, site, dry):
     print("\n".join(changes) or "nothing to do")
 
 
+def pull(path, repo, dry):
+    """Record issue numbers and completion dates from GitHub in the YAML file.
+
+    Returns the list of changes. The file is rewritten in place, keeping its
+    formatting, and only when something changed.
+    """
+    state = issues(repo)
+    rt = YAML()
+    rt.preserve_quotes = True
+    rt.width = 10**6
+    doc = rt.load(Path(path).read_text())
+    changes = []
+
+    def record(entry):
+        issue = state.get(entry["id"])
+        if not issue:
+            return
+        closed = (
+            datetime.date.fromisoformat(issue["closedAt"][:10])
+            if issue["state"] == "CLOSED"
+            else None
+        )
+        if entry.get("issue") != issue["number"]:
+            entry.insert(
+                list(entry).index("key_results") if "key_results" in entry else len(entry),
+                "issue",
+                issue["number"],
+            )
+            changes.append(f"{entry['id']}: tracking issue #{issue['number']}")
+        if closed and entry.get("completed") != closed:
+            entry.insert(list(entry).index("issue") + 1, "completed", closed)
+            changes.append(f"{entry['id']}: completed {closed}")
+        elif not closed and "completed" in entry:
+            del entry["completed"]
+            changes.append(f"{entry['id']}: reopened")
+
+    for obj in doc["objectives"]:
+        record(obj)
+        for kr in obj["key_results"]:
+            record(kr)
+    if doc.get("repository") != repo:
+        doc.pop("repository", None)
+        doc.insert(1, "repository", repo)
+        changes.append(f"tracking issues are in {repo}")
+    if changes:
+        doc.pop("status_as_of", None)
+        doc.insert(2, "status_as_of", datetime.date.fromisoformat(today()))
+        if not dry:
+            with Path(path).open("w") as f:
+                rt.dump(doc, f)
+    return changes
+
+
 def collect(doc, repo):
     """Return the objectives with their issue state folded in, split into open and completed."""
     state = issues(repo) if repo else {}
@@ -252,8 +313,11 @@ def collect(doc, repo):
             "done": completed is not None,
             "completed": completed,
             "number": number,
-            "url": number
-            and f"https://github.com/{repo or 'astropy/astropy-project'}/issues/{number}",
+            "url": (
+                f"https://github.com/{repo or doc['repository']}/issues/{number}"
+                if number and (repo or "repository" in doc)
+                else None
+            ),
         }
 
     objectives = []
@@ -265,48 +329,23 @@ def collect(doc, repo):
     return ([o for o in objectives if not o["done"]], [o for o in objectives if o["done"]])
 
 
-def to_markdown(doc, text, repo, open_, completed_):
-    def completed(entry):
-        """A note that the entry is done; the class is styled by the documentation build."""
-        return f'<span class="completed">(completed on {entry["completed"]})</span>'
-
-    def objective(obj):
-        notes = [f"Priority: {obj['priority']}"]
-        if obj["number"]:
-            notes.append(f"Tracking issue: [#{obj['number']}]({obj['url']})")
-        notes.append(f"{obj['n_done']} of {len(obj['key_results'])} key results complete")
-        if obj["done"]:
-            notes.append(completed(obj))
-        out = [f"### {obj['id']}: {obj['title']}", "", f"*{' · '.join(notes)}*", ""]
-        for kr in obj["key_results"]:
-            link = f" [[#{kr['number']}]({kr['url']})]" if kr["number"] else ""
-            done = f" {completed(kr)}" if kr["done"] else ""
-            out.append(f"- **{kr['id']}** {kr['text']}{link}{done}")
-        return out + [""]
-
-    out = [
-        f"# {text['title']}",
-        "",
-        "<!-- Generated by roadmap.py from roadmap.yaml and text.yaml; edit those instead of this file. -->",
-        "",
-        f"**Latest revision: {doc['revision']}**"
-        + (f" · *Status from GitHub issues as of {today()}*" if repo else ""),
-        "",
-        *(
-            line
-            for sec in text["sections"]
-            for line in (f"## {sec['title']}", "", sec["text"].rstrip(), "")
-        ),
-        "## Objectives",
-        "",
-    ]
-    for obj in open_:
-        out += objective(obj)
-    if completed_:
-        out += ["## Completed objectives", ""]
-        for obj in completed_:
-            out += objective(obj)
-    return "\n".join(out) + f"\n*{text['footer']}*\n"
+def to_markdown(doc, text, repo, open_, completed):
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        keep_trailing_newline=True,
+    )
+    status = (
+        f"Status from GitHub issues as of {today()}"
+        if repo
+        else f"Completion status last updated {doc['status_as_of']}"
+        if "status_as_of" in doc
+        else None
+    )
+    return env.get_template("roadmap.md").render(
+        doc=doc, text=text, status=status, open=open_, completed=completed
+    )
 
 
 def render(doc, text, repo):
@@ -318,7 +357,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = p.add_subparsers(dest="command", required=True)
-    for name in ("validate", "sync", "render"):
+    for name in ("validate", "sync", "pull", "render"):
         sp = sub.add_parser(name)
         sp.add_argument("yaml", help="the canonical roadmap YAML file")
         sp.add_argument(
@@ -326,13 +365,14 @@ def main():
         )
         if name != "validate":
             sp.add_argument(
-                "--repo", required=name == "sync", help="GitHub repository as owner/name"
+                "--repo", required=name != "render", help="GitHub repository as owner/name"
+            )
+        if name in ("sync", "pull"):
+            sp.add_argument(
+                "--dry-run", action="store_true", help="report changes without making them"
             )
     sub.choices["sync"].add_argument(
         "--site", required=True, help="URL of the published roadmap page, for links in issue bodies"
-    )
-    sub.choices["sync"].add_argument(
-        "--dry-run", action="store_true", help="report changes without making them"
     )
     sub.choices["sync"].add_argument(
         "--yes", action="store_true", help="do not ask for confirmation"
@@ -360,6 +400,9 @@ def main():
             if answer.strip().lower() not in ("y", "yes"):
                 raise SystemExit("aborted")
         sync(doc, text, args.repo, args.site, args.dry_run)
+        print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status unchanged")
+    elif args.command == "pull":
+        print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status unchanged")
     else:
         rendered = render(doc, text, args.repo)
         if args.check:
