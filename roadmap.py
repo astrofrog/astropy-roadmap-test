@@ -7,7 +7,10 @@
 
 ``roadmap.yaml`` defines the objectives and key results; ``text.yaml`` next to
 it (or the file given with ``--text``) holds the page wording and the issue
-body templates. Both are edited only by pull request. Identifiers are never renumbered or reused; an entry that no
+body templates. Both are edited only by pull request. An entry may record its
+tracking issue number as ``issue`` and the date it was done as ``completed``;
+rendering uses these, and live issue state overrides them when ``--repo`` is
+given. Identifiers are never renumbered or reused; an entry that no
 longer applies is removed, leaving a gap. Progress lives in GitHub, with one
 issue per objective and one sub-issue per key result, and a closed issue is
 the record that its entry is done.
@@ -73,6 +76,10 @@ def load(path):
                 f"{where}: {text_field!r} must be a non-empty string"
                 " (quote it if it contains a colon)"
             )
+        if "completed" in entry and not isinstance(entry["completed"], datetime.date):
+            errors.append(f"{where}: 'completed' must be a date such as 2026-10-01")
+        if "issue" in entry and not isinstance(entry["issue"], int):
+            errors.append(f"{where}: 'issue' must be an issue number")
         return True
 
     def number(entry, prefix, where, previous):
@@ -97,7 +104,9 @@ def load(path):
     n = 0
     for i, obj in enumerate(objectives, 1):
         where = f"objective {i}"
-        if not check(obj, where, {"id", "title", "priority", "key_results"}, "title"):
+        if not check(
+            obj, where, {"id", "title", "priority", "key_results", "issue", "completed"}, "title"
+        ):
             continue
         n = number(obj, "O", where, n)
         if obj.get("priority") not in PRIORITIES:
@@ -109,7 +118,7 @@ def load(path):
         m = 0
         for j, kr in enumerate(key_results, 1):
             where = f"objective {i}, key result {j}"
-            if check(kr, where, {"id", "text"}, "text"):
+            if check(kr, where, {"id", "text", "issue", "completed"}, "text"):
                 m = number(kr, f"R{n}.", where, m)
     if errors:
         raise SystemExit("\n".join(f"{path}: {e}" for e in errors))
@@ -232,13 +241,19 @@ def collect(doc, repo):
     state = issues(repo) if repo else {}
 
     def status(entry):
+        """Fold in the issue number and completion date, from the YAML or from GitHub."""
         issue = state.get(entry["id"])
+        number = issue["number"] if issue else entry.get("issue")
+        completed = entry.get("completed")
+        if issue:
+            completed = issue["closedAt"][:10] if issue["state"] == "CLOSED" else None
         return {
             **entry,
-            "done": bool(issue and issue["state"] == "CLOSED"),
-            "completed": issue["closedAt"][:10] if issue and issue["state"] == "CLOSED" else None,
-            "number": issue and issue["number"],
-            "url": issue and f"https://github.com/{repo}/issues/{issue['number']}",
+            "done": completed is not None,
+            "completed": completed,
+            "number": number,
+            "url": number
+            and f"https://github.com/{repo or 'astropy/astropy-project'}/issues/{number}",
         }
 
     objectives = []
