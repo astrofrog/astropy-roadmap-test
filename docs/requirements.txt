@@ -1,0 +1,5 @@
+sphinx
+myst-parser
+astropy-sphinx-theme>=3.0.0
+pyyaml
+jinja2

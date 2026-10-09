@@ -2,8 +2,8 @@
 """Maintain the roadmap from its canonical YAML files.
 
     python roadmap.py validate roadmap.yaml
-    python roadmap.py sync roadmap.yaml --repo OWNER/REPO [--dry-run] [--yes]
-    python roadmap.py render roadmap.yaml roadmap.md|roadmap.html [--repo OWNER/REPO] [--check]
+    python roadmap.py sync roadmap.yaml --repo OWNER/REPO --site URL [--dry-run] [--yes]
+    python roadmap.py render roadmap.yaml roadmap.md [--repo OWNER/REPO] [--check]
 
 ``roadmap.yaml`` defines the objectives and key results; ``text.yaml`` next to
 it (or the file given with ``--text``) holds the page wording and the issue
@@ -15,24 +15,22 @@ the record that its entry is done.
 ``validate`` checks the structure of both files. ``sync`` makes the issues
 match it: missing ones are created, titles, bodies and labels are updated, and
 issues for entries no longer in the file are closed. It never deletes.
-``render`` writes the document, as markdown or as a web page depending on the
-output extension, from the YAML and, with ``--repo``, the issue state; ``--check`` instead fails if the document on disk is not what
-would be written. Both need an authenticated ``gh`` when ``--repo`` is given.
+``render`` writes the markdown document from the YAML and, with ``--repo``,
+the issue state; ``--check`` instead fails if the document on disk is not what
+would be written. The documentation build in ``docs/`` calls it at build time.
+Both need an authenticated ``gh`` when ``--repo`` is given.
 """
 
 import argparse
 import datetime
-import html
 import json
 import re
 import subprocess
 from pathlib import Path
 
 import jinja2
-import markupsafe
 import yaml
 
-TEMPLATES = Path(__file__).resolve().parent / "templates"
 LABELS = {"roadmap": "0e8a16", "objective": "1d76db", "key result": "5319e7"}
 PRIORITIES = ("high", "medium", "low")
 
@@ -160,12 +158,12 @@ def issues(repo):
     return {m[1]: issue for issue in found if (m := re.match(r"(O\d+|R\d+\.\d+):", issue["title"]))}
 
 
-def entry_url(repo, doc_path, obj):
+def entry_url(site, obj):
     anchor = re.sub(r"[^\w\s-]", "", f"{obj['id']} {obj['title']}".lower()).replace(" ", "-")
-    return f"https://github.com/{repo}/blob/main/{doc_path}#{anchor}"
+    return f"{site.rstrip('/')}/#{anchor}"
 
 
-def sync(doc, text, repo, doc_path, dry):
+def sync(doc, text, repo, site, dry):
     existing = issues(repo)
     changes = []
     env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
@@ -205,7 +203,7 @@ def sync(doc, text, repo, doc_path, dry):
     for name, color in LABELS.items():
         dry or run("label", "create", name, "-R", repo, "--color", color, "--force")
     for obj in doc["objectives"]:
-        url = entry_url(repo, doc_path, obj)
+        url = entry_url(site, obj)
         body = body_of["objective"].render(**obj, url=url).strip()
         number = ensure(obj, f"{obj['id']}: {obj['title']}", body, ["roadmap", "objective"])
         for kr in obj["key_results"]:
@@ -288,42 +286,8 @@ def to_markdown(doc, text, repo, open_, completed):
     return "\n".join(out) + f"\n*{text['footer']}*\n"
 
 
-def to_html(doc, text, repo, open_, completed):
-    def inline(text):
-        """Escape text and convert the little markdown used in prose: code, links, bold."""
-        text = html.escape(text)
-        text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
-        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
-        return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(TEMPLATES),
-        autoescape=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
-    env.filters["inline"] = lambda text: markupsafe.Markup(inline(text))
-    env.filters["prose"] = lambda text: markupsafe.Markup(
-        "".join(f"<p>{inline(p.strip())}</p>\n" for p in text.strip().split("\n\n") if p.strip())
-    )
-    objectives = open_ + completed
-    return env.get_template("roadmap.html").render(
-        doc=doc,
-        text=text,
-        repo=repo,
-        github=repo or "astropy/astropy-project",
-        open=open_,
-        completed=completed,
-        objectives=objectives,
-        n_kr=sum(len(o["key_results"]) for o in objectives),
-        n_done=sum(o["n_done"] for o in objectives),
-        today=today(),
-    )
-
-
-def render(doc, text, repo, output):
-    groups = collect(doc, repo)
-    return (to_html if output.endswith(".html") else to_markdown)(doc, text, repo, *groups)
+def render(doc, text, repo):
+    return to_markdown(doc, text, repo, *collect(doc, repo))
 
 
 def main():
@@ -342,9 +306,7 @@ def main():
                 "--repo", required=name == "sync", help="GitHub repository as owner/name"
             )
     sub.choices["sync"].add_argument(
-        "--doc",
-        default="roadmap.md",
-        help="path of the rendered document in the repository, for links in issue bodies",
+        "--site", required=True, help="URL of the published roadmap page, for links in issue bodies"
     )
     sub.choices["sync"].add_argument(
         "--dry-run", action="store_true", help="report changes without making them"
@@ -352,9 +314,7 @@ def main():
     sub.choices["sync"].add_argument(
         "--yes", action="store_true", help="do not ask for confirmation"
     )
-    sub.choices["render"].add_argument(
-        "output", help="file to write; .html gives a web page, anything else markdown"
-    )
+    sub.choices["render"].add_argument("output", help="markdown file to write")
     sub.choices["render"].add_argument(
         "--check",
         action="store_true",
@@ -376,9 +336,9 @@ def main():
             answer = input(f"Create and update roadmap issues in {args.repo}? [y/N] ")
             if answer.strip().lower() not in ("y", "yes"):
                 raise SystemExit("aborted")
-        sync(doc, text, args.repo, args.doc, args.dry_run)
+        sync(doc, text, args.repo, args.site, args.dry_run)
     else:
-        rendered = render(doc, text, args.repo, args.output)
+        rendered = render(doc, text, args.repo)
         if args.check:
             if Path(args.output).read_text() != rendered:
                 raise SystemExit(
