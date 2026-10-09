@@ -43,7 +43,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install ruamel.yaml jinja2
       # Replace the site URL with the Read the Docs address once the project exists.
-      - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --site https://astropy-roadmap.readthedocs.io/en/latest/ --yes | tee changes.md
+      - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --site https://astropy-roadmap.readthedocs.io/en/latest/ --yes
+      - run: python roadmap.py pull roadmap.yaml --repo ${{ github.repository }} | tee changes.md
       - uses: peter-evans/create-pull-request@v7
         with:
           branch: roadmap-status

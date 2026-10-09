@@ -14,12 +14,13 @@ gap. Progress lives in GitHub, with one issue per objective and one sub-issue
 per key result, and a closed issue is the record that its entry is done.
 
 ``validate`` checks the structure of both files. ``sync`` makes the issues
-match the YAML: missing ones are created, titles, bodies and labels are
+match the YAML: missing ones are created, titles, descriptions and labels are
 updated, and issues for entries no longer in the file are closed; it never
-deletes. It then does what ``pull`` does on its own: records each entry's
-tracking issue number as ``issue`` and the date its issue was closed as
-``completed`` in the YAML file, so the file is a complete record and rendering
-needs no network. Those two fields are written by the script, not by hand.
+deletes. ``pull`` goes the other way: it records each entry's tracking issue
+number as ``issue`` and the date its issue was closed as ``completed`` in the
+YAML file, so the file is a complete record and rendering needs no network.
+Those two fields are written by ``pull``, not by hand. Both commands print one
+line per change and nothing else, so the output can serve as a change log.
 ``render`` writes the markdown document from the YAML, or from live issue
 state with ``--repo``; ``--check`` instead fails if the document on disk is
 not what would be written. The documentation build in ``docs/`` calls it at
@@ -38,6 +39,7 @@ from ruamel.yaml import YAML, YAMLError
 
 yaml = YAML(typ="safe")
 
+FIELD_NAMES = {"title": "title", "body": "description", "labels": "labels"}
 LABELS = {"roadmap": "0e8a16", "objective": "1d76db", "key result": "5319e7"}
 PRIORITIES = ("high", "medium", "low")
 
@@ -196,16 +198,20 @@ def sync(doc, text, repo, site, dry):
                 "labels": sorted(label["name"] for label in issue["labels"]),
             }
             if patch := {k: v for k, v in want.items() if v != have[k]}:
-                changes.append(f"update  #{issue['number']} {entry['id']}: {', '.join(patch)}")
+                what = " and ".join(
+                    FIELD_NAMES[k] for k in ("title", "body", "labels") if k in patch
+                )
+                changes.append(f"updated #{issue['number']} {entry['id']}: {what}")
                 dry or run(
                     "api", "-X", "PATCH", f"repos/{repo}/issues/{issue['number']}", payload=patch
                 )
             return issue["number"]
-        changes.append(f"create  {title}")
         if dry:
+            changes.append(f"created {title}")
             return None
         payload = {"title": title, "body": body, "labels": labels}
         issue = run("api", "-X", "POST", f"repos/{repo}/issues", payload=payload)
+        changes.append(f"created #{issue['number']} {title}")
         if parent:
             # The endpoint wants the database id of the sub-issue, not its number.
             run(
@@ -233,7 +239,7 @@ def sync(doc, text, repo, site, dry):
     # Whatever is left was removed from the YAML, including the key results of a removed objective.
     for entry_id, issue in existing.items():
         if issue["state"] == "OPEN":
-            changes.append(f"close   #{issue['number']} {entry_id}: no longer in the roadmap")
+            changes.append(f"closed  #{issue['number']} {entry_id}: removed from the roadmap")
             dry or run(
                 "api",
                 "-X",
@@ -241,7 +247,7 @@ def sync(doc, text, repo, site, dry):
                 f"repos/{repo}/issues/{issue['number']}",
                 payload={"state": "closed", "state_reason": "not_planned"},
             )
-    print("\n".join(changes) or "nothing to do")
+    print("\n".join(changes) or "issues already match the roadmap")
 
 
 def pull(path, repo, dry):
@@ -272,13 +278,13 @@ def pull(path, repo, dry):
                 "issue",
                 issue["number"],
             )
-            changes.append(f"{entry['id']}: tracking issue #{issue['number']}")
+            changes.append(f"{entry['id']} is tracked in #{issue['number']}")
         if closed and entry.get("completed") != closed:
             entry.insert(list(entry).index("issue") + 1, "completed", closed)
-            changes.append(f"{entry['id']}: completed {closed}")
+            changes.append(f"{entry['id']} completed on {closed}")
         elif not closed and "completed" in entry:
             del entry["completed"]
-            changes.append(f"{entry['id']}: reopened")
+            changes.append(f"{entry['id']} reopened, no longer complete")
 
     for obj in doc["objectives"]:
         record(obj)
@@ -400,9 +406,8 @@ def main():
             if answer.strip().lower() not in ("y", "yes"):
                 raise SystemExit("aborted")
         sync(doc, text, args.repo, args.site, args.dry_run)
-        print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status unchanged")
     elif args.command == "pull":
-        print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status unchanged")
+        print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status already recorded")
     else:
         rendered = render(doc, text, args.repo)
         if args.check:
