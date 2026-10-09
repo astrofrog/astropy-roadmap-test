@@ -1,9 +1,21 @@
 title: The Astropy Roadmap
 revision: October 2026 (draft, proof of concept)
-introduction: |
-  This Roadmap captures the high level objectives that the Astropy Project aims to achieve to improve the health and stability of the Project, together with the key results we will use to measure progress towards each objective. It is maintained by the Strategic Planning and Organizing Committee (SPOC) and is revisited at least once a year at the Astropy coordination meeting, and at any time via pull requests to this repository.
+sections:
+- title: Introduction
+  text: |
+    This Roadmap captures the high level objectives that the Astropy Project aims to achieve to improve the health and stability of the Project, together with the key results we will use to measure progress towards each objective. It is maintained by the Strategic Planning and Organizing Committee (SPOC) and is revisited at least once a year at the Astropy coordination meeting, and at any time via pull requests to this repository.
 
-  The Roadmap is used to prioritize the allocation of Project resources. In particular, funding requests submitted in response to the Project's funding calls are asked to identify which key results they address.
+    The Roadmap is used to prioritize the allocation of Project resources. In particular, funding requests submitted in response to the Project's funding calls are asked to identify which key results they address.
+- title: How to read this document
+  text: |
+    Each **objective** is a qualitative goal that describes a state we want the Project to reach. Each objective has up to five **key results**: concrete, measurable outcomes that, taken together, tell us whether the objective has been achieved. A key result is a single sentence that contains its own measure of success, for example a number, a published document, or a merged and released feature.
+
+    Every objective has an identifier such as `O3` and every key result has an identifier such as `R3.2`. Identifiers are stable: once assigned they are never renumbered or reused, so they can be cited in funding requests, issues, and pull requests without ambiguity. New objectives and key results take the next unused number.
+
+    The objectives and key results are defined in [`roadmap.yaml`](roadmap.yaml), and changes to their wording or priority are made by pull request to that file. This document is generated from it and from the GitHub issues that track progress: one issue per objective, linked from the line under its heading, with one sub-issue per key result, linked from the end of the key result. Status updates, links to funded work, and links to implementation pull requests belong in the issues. A key result is complete when its issue has been closed, and an objective is complete when the SPOC closes its issue, after which it is listed under completed objectives below. An entry that no longer applies is removed from the YAML file, which closes its issue; its identifier is not reused.
+
+    Each objective may carry a priority (high, medium, or low) assigned by the SPOC. Priority reflects how important the SPOC considers it that progress is made before the next revision, independent of whether anyone is currently working on it.
+
 objectives:
 
 - id: O1

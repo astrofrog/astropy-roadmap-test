@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: pip install pyyaml
+      - run: pip install pyyaml jinja2
       - run: python roadmap.py validate roadmap.yaml
       - name: Refuse hand edits to the generated document
         run: |
@@ -43,7 +43,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - run: pip install pyyaml
+      - run: pip install pyyaml jinja2
       - run: python roadmap.py sync roadmap.yaml --repo ${{ github.repository }} --doc roadmap-2026.md --yes
       - run: python roadmap.py render roadmap.yaml roadmap-2026.md --repo ${{ github.repository }}
       - run: python roadmap.py render roadmap.yaml roadmap-2026.html --repo ${{ github.repository }}
