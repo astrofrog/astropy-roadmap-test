@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Maintain the roadmap from its canonical YAML file.
+"""Maintain the roadmap from its canonical YAML files.
 
     python roadmap.py validate roadmap.yaml
     python roadmap.py sync roadmap.yaml --repo OWNER/REPO [--dry-run] [--yes]
     python roadmap.py render roadmap.yaml roadmap.md|roadmap.html [--repo OWNER/REPO] [--check]
 
-The YAML file defines the objectives and key results and is edited only by
-pull request. Identifiers are never renumbered or reused; an entry that no
+``roadmap.yaml`` defines the objectives and key results; ``text.yaml`` next to
+it (or the file given with ``--text``) holds the page wording and the issue
+body templates. Both are edited only by pull request. Identifiers are never renumbered or reused; an entry that no
 longer applies is removed, leaving a gap. Progress lives in GitHub, with one
 issue per objective and one sub-issue per key result, and a closed issue is
 the record that its entry is done.
 
-``validate`` checks the structure of the YAML file. ``sync`` makes the issues
+``validate`` checks the structure of both files. ``sync`` makes the issues
 match it: missing ones are created, titles, bodies and labels are updated, and
 issues for entries no longer in the file are closed. It never deletes.
 ``render`` writes the document, as markdown or as a web page depending on the
@@ -73,13 +74,8 @@ def load(path):
             errors.append(f"{where}: id {entry['id']} is out of order; new entries take the next unused number")
         return int(m[1])
 
-    for field in ("title", "revision"):
-        if not isinstance(doc.get(field), str):
-            errors.append(f"top level: {field!r} must be a string")
-    for i, section in enumerate(doc.get("sections") or [], 1):
-        check(section, f"section {i}", {"title", "text"}, "text")
-        if not isinstance(section.get("title"), str):
-            errors.append(f"section {i}: 'title' must be a string")
+    if not isinstance(doc.get("revision"), str):
+        errors.append("top level: 'revision' must be a string")
     objectives = doc.get("objectives")
     if not isinstance(objectives, list):
         raise SystemExit(f"{path}: 'objectives' must be a list")
@@ -105,6 +101,27 @@ def load(path):
     return doc
 
 
+def load_text(path):
+    """Return the parsed wording file, or exit listing every problem."""
+    try:
+        text = yaml.safe_load(open(path))
+    except yaml.YAMLError as exc:
+        raise SystemExit(f"{path}: not valid YAML\n{exc}")
+    errors = []
+    for field in ("title", "footer"):
+        if not isinstance(text.get(field), str):
+            errors.append(f"{field!r} must be a string")
+    for i, section in enumerate(text.get("sections") or [], 1):
+        if not isinstance(section, dict) or not all(isinstance(section.get(k), str) for k in ("title", "text")):
+            errors.append(f"section {i}: must have a 'title' and a 'text', both strings")
+    for kind in ("objective", "key_result"):
+        if not isinstance((text.get("issues") or {}).get(kind), str):
+            errors.append(f"issues.{kind} must be a template string")
+    if errors:
+        raise SystemExit("\n".join(f"{path}: {e}" for e in errors))
+    return text
+
+
 def issues(repo):
     """Return {identifier: issue} for every roadmap issue in the repository."""
     found = run("issue", "list", "-R", repo, "-l", "roadmap", "-s", "all", "-L", "1000",
@@ -117,9 +134,11 @@ def entry_url(repo, doc_path, obj):
     return f"https://github.com/{repo}/blob/main/{doc_path}#{anchor}"
 
 
-def sync(doc, repo, doc_path, dry):
+def sync(doc, text, repo, doc_path, dry):
     existing = issues(repo)
     changes = []
+    env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
+    body_of = {kind: env.from_string(text["issues"][kind]) for kind in ("objective", "key_result")}
 
     def ensure(entry, title, body, labels, parent=None):
         """Create or update the issue for an entry; return its number, or None in a dry run."""
@@ -146,18 +165,10 @@ def sync(doc, repo, doc_path, dry):
         dry or run("label", "create", name, "-R", repo, "--color", color, "--force")
     for obj in doc["objectives"]:
         url = entry_url(repo, doc_path, obj)
-        body = (f"**Roadmap entry:** {url}\n\n## Key results\n\n"
-                + "".join(f"- **{kr['id']}** {kr['text']}\n" for kr in obj["key_results"])
-                + "\nEach key result is tracked as a sub-issue of this issue. Changes to the wording "
-                "or priority of the objective are made by pull request to `roadmap.yaml`; progress "
-                "updates and links to funded work and implementation PRs belong here. Close this "
-                "issue when the objective has been achieved.")
+        body = body_of["objective"].render(**obj, url=url).strip()
         number = ensure(obj, f"{obj['id']}: {obj['title']}", body, ["roadmap", "objective"])
         for kr in obj["key_results"]:
-            body = (f"Key result **{kr['id']}** of objective **{obj['id']}**"
-                    f"{f' (#{number})' if number else ''}: {kr['text']}\n\n**Roadmap entry:** {url}\n\n"
-                    "Close this issue when the key result has been achieved, with a comment "
-                    "pointing at the evidence.")
+            body = body_of["key_result"].render(**kr, objective={**obj, "number": number}, url=url).strip()
             ensure(kr, f"{kr['id']}: {kr['text']}", body, ["roadmap", "key result"], parent=number)
     # Whatever is left was removed from the YAML, including the key results of a removed objective.
     for entry_id, issue in existing.items():
@@ -187,7 +198,7 @@ def collect(doc, repo):
     return ([o for o in objectives if not o["done"]], [o for o in objectives if o["done"]])
 
 
-def to_markdown(doc, repo, open_, completed):
+def to_markdown(doc, text, repo, open_, completed):
     def objective(obj):
         notes = []
         if "priority" in obj:
@@ -202,10 +213,10 @@ def to_markdown(doc, repo, open_, completed):
         return out + [""]
 
     today = datetime.date.today().isoformat()
-    out = [f"# {doc['title']}", "",
-           "<!-- Generated by roadmap.py from roadmap.yaml; edit those instead of this file. -->", "",
+    out = [f"# {text['title']}", "",
+           "<!-- Generated by roadmap.py from roadmap.yaml and text.yaml; edit those instead of this file. -->", "",
            f"**Latest revision: {doc['revision']}**" + (f" · *Status from GitHub issues as of {today}*" if repo else ""), "",
-           *(line for sec in doc.get("sections", []) for line in (f"## {sec['title']}", "", sec["text"].rstrip(), "")),
+           *(line for sec in text["sections"] for line in (f"## {sec['title']}", "", sec["text"].rstrip(), "")),
            "## Objectives", ""]
     for obj in open_:
         out += objective(obj)
@@ -213,10 +224,10 @@ def to_markdown(doc, repo, open_, completed):
         out += ["## Completed objectives", ""]
         for obj in completed:
             out += objective(obj)
-    return "\n".join(out)
+    return "\n".join(out) + f"\n*{text['footer']}*\n"
 
 
-def to_html(doc, repo, open_, completed):
+def to_html(doc, text, repo, open_, completed):
     def inline(text):
         """Escape text and convert the little markdown used in prose: code, links, bold."""
         text = html.escape(text)
@@ -231,16 +242,14 @@ def to_html(doc, repo, open_, completed):
         "".join(f"<p>{inline(p.strip())}</p>\n" for p in text.strip().split("\n\n") if p.strip()))
     objectives = open_ + completed
     return env.get_template("roadmap.html").render(
-        doc=doc, repo=repo, github=repo or "astropy/astropy-project", open=open_, completed=completed, objectives=objectives,
+        doc=doc, text=text, repo=repo, github=repo or "astropy/astropy-project", open=open_, completed=completed, objectives=objectives,
         n_kr=sum(len(o["key_results"]) for o in objectives), n_done=sum(o["n_done"] for o in objectives),
         today=datetime.date.today().isoformat())
 
 
-def render(doc, repo, output):
+def render(doc, text, repo, output):
     groups = collect(doc, repo)
-    return (to_html if output.endswith(".html") else to_markdown)(doc, repo, *groups)
-
-
+    return (to_html if output.endswith(".html") else to_markdown)(doc, text, repo, *groups)
 
 
 def main():
@@ -249,6 +258,7 @@ def main():
     for name in ("validate", "sync", "render"):
         sp = sub.add_parser(name)
         sp.add_argument("yaml", help="the canonical roadmap YAML file")
+        sp.add_argument("--text", help="the wording file; default: text.yaml next to the roadmap file")
         if name != "validate":
             sp.add_argument("--repo", required=name == "sync", help="GitHub repository as owner/name")
     sub.choices["sync"].add_argument("--doc", default="roadmap.md",
@@ -261,23 +271,26 @@ def main():
     args = p.parse_args()
 
     doc = load(args.yaml)
+    text_path = args.text or Path(args.yaml).with_name("text.yaml")
+    text = load_text(text_path)
     if args.command == "validate":
         n = sum(len(o["key_results"]) for o in doc["objectives"])
-        print(f"{args.yaml}: {len(doc['objectives'])} objectives, {n} key results, no problems found")
+        print(f"{args.yaml}: {len(doc['objectives'])} objectives, {n} key results; "
+              f"{text_path}: {len(text['sections'])} sections; no problems found")
     elif args.command == "sync":
         if not (args.dry_run or args.yes):
             answer = input(f"Create and update roadmap issues in {args.repo}? [y/N] ")
             if answer.strip().lower() not in ("y", "yes"):
                 raise SystemExit("aborted")
-        sync(doc, args.repo, args.doc, args.dry_run)
+        sync(doc, text, args.repo, args.doc, args.dry_run)
     else:
-        text = render(doc, args.repo, args.output)
+        rendered = render(doc, text, args.repo, args.output)
         if args.check:
-            if open(args.output).read() != text:
+            if open(args.output).read() != rendered:
                 raise SystemExit(f"{args.output} is out of date; run: python roadmap.py render {args.yaml} {args.output}")
             print(f"{args.output} is up to date")
         else:
-            open(args.output, "w").write(text)
+            open(args.output, "w").write(rendered)
 
 
 if __name__ == "__main__":
