@@ -14,13 +14,13 @@
 ### {{ obj.id }}: {{ obj.title }}
 
 *Priority: {{ obj.priority }}
-{%- if obj.url %} · Tracking issue: [#{{ obj.number }}]({{ obj.url }}){% elif obj.number %} · Tracking issue: #{{ obj.number }}{% endif %}
+{%- if obj.link %} · Tracking issue: {{ obj.link }}{% endif %}
  · {{ obj.n_done }} of {{ obj.key_results | length }} key results complete
 {%- if obj.done %} · <span class="completed">(completed on {{ obj.completed }})</span>{% endif %}*
 
 {% for kr in obj.key_results %}
 - **{{ kr.id }}** {{ kr.text }}
-{%- if kr.url %} [[#{{ kr.number }}]({{ kr.url }})]{% elif kr.number %} [#{{ kr.number }}]{% endif %}
+{%- if kr.link %} [{{ kr.link }}]{% endif %}
 {%- if kr.done %} <span class="completed">(completed on {{ kr.completed }})</span>{% endif %}
 
 {% endfor %}
@@ -28,10 +28,10 @@
 {% endmacro %}
 ## Objectives
 
-{% for obj in open %}{{ objective(obj) }}{% endfor %}
-{% if completed %}
+{% for obj in objectives if not obj.done %}{{ objective(obj) }}{% endfor %}
+{% if objectives | selectattr("done") | list %}
 ## Completed objectives
 
-{% for obj in completed %}{{ objective(obj) }}{% endfor %}
+{% for obj in objectives if obj.done %}{{ objective(obj) }}{% endfor %}
 {% endif %}
 *{{ text.footer }}*

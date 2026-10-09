@@ -39,13 +39,12 @@ from ruamel.yaml import YAML, YAMLError
 
 yaml = YAML(typ="safe")
 
-FIELD_NAMES = {"title": "title", "body": "description", "labels": "labels"}
 LABELS = {"roadmap": "0e8a16", "objective": "1d76db", "key result": "5319e7"}
 PRIORITIES = ("high", "medium", "low")
 
 
 def today():
-    return datetime.datetime.now(tz=datetime.UTC).date().isoformat()
+    return datetime.datetime.now(tz=datetime.UTC).date()
 
 
 def run(*cmd, payload=None):
@@ -160,20 +159,8 @@ def load_text(path):
 
 def issues(repo):
     """Return {identifier: issue} for every roadmap issue in the repository."""
-    found = run(
-        "issue",
-        "list",
-        "-R",
-        repo,
-        "-l",
-        "roadmap",
-        "-s",
-        "all",
-        "-L",
-        "1000",
-        "--json",
-        "number,title,body,state,labels,closedAt",
-    )
+    fields = "number,title,body,state,labels,closedAt"
+    found = run(*f"issue list -R {repo} -l roadmap -s all -L 1000 --json {fields}".split())
     return {m[1]: issue for issue in found if (m := re.match(r"(O\d+|R\d+\.\d+):", issue["title"]))}
 
 
@@ -185,6 +172,10 @@ def entry_url(site, obj):
 def sync(doc, text, repo, site, dry):
     existing = issues(repo)
     changes = []
+
+    def api(method, path, **payload):
+        return run("api", "-X", method, f"repos/{repo}/{path}", payload=payload)
+
     env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
     body_of = {kind: env.from_string(text["issues"][kind]) for kind in ("objective", "key_result")}
 
@@ -198,29 +189,18 @@ def sync(doc, text, repo, site, dry):
                 "labels": sorted(label["name"] for label in issue["labels"]),
             }
             if patch := {k: v for k, v in want.items() if v != have[k]}:
-                what = " and ".join(
-                    FIELD_NAMES[k] for k in ("title", "body", "labels") if k in patch
-                )
+                what = " and ".join(patch).replace("body", "description")
                 changes.append(f"updated #{issue['number']} {entry['id']}: {what}")
-                dry or run(
-                    "api", "-X", "PATCH", f"repos/{repo}/issues/{issue['number']}", payload=patch
-                )
+                dry or api("PATCH", f"issues/{issue['number']}", **patch)
             return issue["number"]
         if dry:
             changes.append(f"created {title}")
             return None
-        payload = {"title": title, "body": body, "labels": labels}
-        issue = run("api", "-X", "POST", f"repos/{repo}/issues", payload=payload)
+        issue = api("POST", "issues", title=title, body=body, labels=labels)
         changes.append(f"created #{issue['number']} {title}")
         if parent:
             # The endpoint wants the database id of the sub-issue, not its number.
-            run(
-                "api",
-                "-X",
-                "POST",
-                f"repos/{repo}/issues/{parent}/sub_issues",
-                payload={"sub_issue_id": issue["id"]},
-            )
+            api("POST", f"issues/{parent}/sub_issues", sub_issue_id=issue["id"])
         return issue["number"]
 
     for name, color in LABELS.items():
@@ -240,12 +220,8 @@ def sync(doc, text, repo, site, dry):
     for entry_id, issue in existing.items():
         if issue["state"] == "OPEN":
             changes.append(f"closed  #{issue['number']} {entry_id}: removed from the roadmap")
-            dry or run(
-                "api",
-                "-X",
-                "PATCH",
-                f"repos/{repo}/issues/{issue['number']}",
-                payload={"state": "closed", "state_reason": "not_planned"},
+            dry or api(
+                "PATCH", f"issues/{issue['number']}", state="closed", state_reason="not_planned"
             )
     print("\n".join(changes) or "issues already match the roadmap")
 
@@ -270,6 +246,13 @@ def pull(path, repo, dry):
         if list(entry)[-1] == key and last in entry.ca.items:
             entry.ca.items[key] = entry.ca.items.pop(last)
 
+    def remove(entry, key):
+        """Remove a key, handing any blank line that followed it to the new last key."""
+        comment = entry.ca.items.pop(key, None)
+        del entry[key]
+        if comment:
+            entry.ca.items[list(entry)[-1]] = comment
+
     def record(entry):
         issue = state.get(entry["id"])
         if not issue:
@@ -287,10 +270,7 @@ def pull(path, repo, dry):
             insert(entry, list(entry).index("issue") + 1, "completed", closed)
             changes.append(f"{entry['id']} completed on {closed}")
         elif not closed and "completed" in entry:
-            comment = entry.ca.items.pop("completed", None)
-            del entry["completed"]
-            if comment:
-                entry.ca.items[list(entry)[-1]] = comment
+            remove(entry, "completed")
             changes.append(f"{entry['id']} reopened, no longer complete")
 
     for obj in doc["objectives"]:
@@ -303,34 +283,33 @@ def pull(path, repo, dry):
         changes.append(f"tracking issues are in {repo}")
     if changes:
         doc.pop("status_as_of", None)
-        doc.insert(2, "status_as_of", datetime.date.fromisoformat(today()))
+        doc.insert(2, "status_as_of", today())
         if not dry:
             with Path(path).open("w") as f:
                 rt.dump(doc, f)
     return changes
 
 
-def collect(doc, repo):
-    """Return the objectives with their issue state folded in, split into open and completed."""
+def render(doc, text, repo):
+    """Return the markdown document, with status from the YAML or, with a repo, from GitHub."""
     state = issues(repo) if repo else {}
+    github = repo or doc.get("repository")
 
     def status(entry):
-        """Fold in the issue number and completion date, from the YAML or from GitHub."""
+        """Fold the issue number and completion date into an entry."""
         issue = state.get(entry["id"])
         number = issue["number"] if issue else entry.get("issue")
         completed = entry.get("completed")
         if issue:
             completed = issue["closedAt"][:10] if issue["state"] == "CLOSED" else None
+        link = (
+            f"[#{number}](https://github.com/{github}/issues/{number})" if github else f"#{number}"
+        )
         return {
             **entry,
             "done": completed is not None,
             "completed": completed,
-            "number": number,
-            "url": (
-                f"https://github.com/{repo or doc['repository']}/issues/{number}"
-                if number and (repo or "repository" in doc)
-                else None
-            ),
+            "link": link if number else None,
         }
 
     objectives = []
@@ -339,30 +318,22 @@ def collect(doc, repo):
         obj["key_results"] = [status(kr) for kr in obj["key_results"]]
         obj["n_done"] = sum(kr["done"] for kr in obj["key_results"])
         objectives.append(obj)
-    return ([o for o in objectives if not o["done"]], [o for o in objectives if o["done"]])
-
-
-def to_markdown(doc, text, repo, open_, completed):
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
-        trim_blocks=True,
-        lstrip_blocks=True,
-        keep_trailing_newline=True,
-    )
-    status = (
+    status_line = (
         f"Status from GitHub issues as of {today()}"
         if repo
         else f"Completion status last updated {doc['status_as_of']}"
         if "status_as_of" in doc
         else None
     )
-    return env.get_template("roadmap.md").render(
-        doc=doc, text=text, status=status, open=open_, completed=completed
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        keep_trailing_newline=True,
     )
-
-
-def render(doc, text, repo):
-    return to_markdown(doc, text, repo, *collect(doc, repo))
+    return env.get_template("roadmap.md").render(
+        doc=doc, text=text, status=status_line, objectives=objectives
+    )
 
 
 def main():
