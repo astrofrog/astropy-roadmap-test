@@ -14,7 +14,7 @@ import roadmap
 
 doc = roadmap.load(ROOT / "roadmap.yaml")
 text = roadmap.load_text(ROOT / "text.yaml")
-Path(__file__).with_name("index.md").write_text(roadmap.render(doc, text, None))
+Path(__file__).with_name("index.md").write_text(roadmap.render(doc, text))
 
 project = text["title"]
 copyright = "The Astropy Developers"

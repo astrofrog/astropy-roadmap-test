@@ -4,7 +4,7 @@
     python roadmap.py validate roadmap.yaml
     python roadmap.py sync roadmap.yaml --repo OWNER/REPO --site URL [--dry-run] [--yes]
     python roadmap.py pull roadmap.yaml --repo OWNER/REPO [--dry-run]
-    python roadmap.py render roadmap.yaml roadmap.md [--repo OWNER/REPO] [--check]
+    python roadmap.py render roadmap.yaml roadmap.md
 
 ``roadmap.yaml`` defines the objectives and key results; ``text.yaml`` next to
 it (or the file given with ``--text``) holds the page wording and the issue
@@ -21,10 +21,9 @@ number as ``issue`` and the date its issue was closed as ``completed`` in the
 YAML file, so the file is a complete record and rendering needs no network.
 Those two fields are written by ``pull``, not by hand. Both commands print one
 line per change and nothing else, so the output can serve as a change log.
-``render`` writes the markdown document from the YAML, or from live issue
-state with ``--repo``; ``--check`` instead fails if the document on disk is
-not what would be written. The documentation build in ``docs/`` calls it at
-build time. ``gh`` must be authenticated whenever ``--repo`` is given.
+``render`` writes the markdown document from the YAML alone; the documentation
+build in ``docs/`` calls it at build time. ``gh`` must be authenticated for
+``sync`` and ``pull``.
 """
 
 import argparse
@@ -290,27 +289,17 @@ def pull(path, repo, dry):
     return changes
 
 
-def render(doc, text, repo):
-    """Return the markdown document, with status from the YAML or, with a repo, from GitHub."""
-    state = issues(repo) if repo else {}
-    github = repo or doc.get("repository")
+def render(doc, text):
+    """Return the markdown document from the YAML files."""
+    github = doc.get("repository")
 
     def status(entry):
-        """Fold the issue number and completion date into an entry."""
-        issue = state.get(entry["id"])
-        number = issue["number"] if issue else entry.get("issue")
-        completed = entry.get("completed")
-        if issue:
-            completed = issue["closedAt"][:10] if issue["state"] == "CLOSED" else None
+        """Add the issue link and completion flag to an entry."""
+        number = entry.get("issue")
         link = (
             f"[#{number}](https://github.com/{github}/issues/{number})" if github else f"#{number}"
         )
-        return {
-            **entry,
-            "done": completed is not None,
-            "completed": completed,
-            "link": link if number else None,
-        }
+        return {**entry, "done": "completed" in entry, "link": link if number else None}
 
     objectives = []
     for obj in doc["objectives"]:
@@ -319,11 +308,7 @@ def render(doc, text, repo):
         obj["n_done"] = sum(kr["done"] for kr in obj["key_results"])
         objectives.append(obj)
     status_line = (
-        f"Status from GitHub issues as of {today()}"
-        if repo
-        else f"Completion status last updated {doc['status_as_of']}"
-        if "status_as_of" in doc
-        else None
+        f"Completion status last updated {doc['status_as_of']}" if "status_as_of" in doc else None
     )
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
@@ -347,11 +332,8 @@ def main():
         sp.add_argument(
             "--text", help="the wording file; default: text.yaml next to the roadmap file"
         )
-        if name != "validate":
-            sp.add_argument(
-                "--repo", required=name != "render", help="GitHub repository as owner/name"
-            )
         if name in ("sync", "pull"):
+            sp.add_argument("--repo", required=True, help="GitHub repository as owner/name")
             sp.add_argument(
                 "--dry-run", action="store_true", help="report changes without making them"
             )
@@ -362,11 +344,6 @@ def main():
         "--yes", action="store_true", help="do not ask for confirmation"
     )
     sub.choices["render"].add_argument("output", help="markdown file to write")
-    sub.choices["render"].add_argument(
-        "--check",
-        action="store_true",
-        help="exit with an error if the output file is not up to date",
-    )
     args = p.parse_args()
 
     doc = load(args.yaml)
@@ -387,15 +364,7 @@ def main():
     elif args.command == "pull":
         print("\n".join(pull(args.yaml, args.repo, args.dry_run)) or "status already recorded")
     else:
-        rendered = render(doc, text, args.repo)
-        if args.check:
-            if Path(args.output).read_text() != rendered:
-                raise SystemExit(
-                    f"{args.output} is out of date; run: python roadmap.py render {args.yaml} {args.output}"
-                )
-            print(f"{args.output} is up to date")
-        else:
-            Path(args.output).write_text(rendered)
+        Path(args.output).write_text(render(doc, text))
 
 
 if __name__ == "__main__":
