@@ -2,6 +2,7 @@ revision: October 2026 (draft, proof of concept)
 objectives:
 - id: O1
   title: Improve support for reading and writing ASDF files, optionally with GWCS coordinates, in the astropy core and coordinated packages
+  priority: medium
   key_results:
   - id: R1.1
     text: Publish a table listing, for the core and coordinated packages, every function and method that accepts FITS files as input or output, either as filenames or as HDU objects, and whether it also accepts ASDF filenames or objects.
@@ -12,6 +13,7 @@ objectives:
 
 - id: O2
   title: Develop and implement a modern and maintainable strategy for FITS that improves performance and capabilities
+  priority: medium
   key_results:
   - id: R2.1
     text: Publish an APE outlining the plan to improve the performance and long-term maintainability of FITS support within the Astropy Project.
@@ -26,6 +28,7 @@ objectives:
 
 - id: O3
   title: Provide support for reading and writing spectra using the IVOA SpectrumDM in specutils
+  priority: medium
   key_results:
   - id: R3.1
     text: specutils can read any SpectrumDM-compatible VOTable, demonstrated using at least one spectrum downloaded from each of at least two different archives.
@@ -36,6 +39,7 @@ objectives:
 
 - id: O4
   title: Make astropy.units.Quantity a modern part of the Python array ecosystem by supporting any array-API-compliant backend
+  priority: medium
   key_results:
   - id: R4.1
     text: A new Quantity class that wraps any array-API-compliant array is merged to main with a stable, documented public API, building on the existing prototype.
@@ -50,6 +54,7 @@ objectives:
 
 - id: O5
   title: Provide supported, public ways of serializing astropy objects
+  priority: medium
   key_results:
   - id: R5.1
     text: Publish a list of astropy classes together with whether, and how, each can currently be serialized.
@@ -60,6 +65,7 @@ objectives:
 
 - id: O6
   title: Improve the robustness and reliability of performance benchmarking
+  priority: medium
   key_results:
   - id: R6.1
     text: Set up a GitHub self-hosted runner on dedicated hardware, where benchmarks can be bound to a specific core, with full documentation of how it was set up.
@@ -70,6 +76,7 @@ objectives:
 
 - id: O7
   title: Increase the visibility and usage of coordinated packages beyond the core package
+  priority: medium
   key_results:
   - id: R7.1
     text: Make it possible to install groups of ecosystem packages by use case, for example `pip install astropy[photometry]` or `pip install astropy[spectroscopy]`.
@@ -82,6 +89,7 @@ objectives:
 
 - id: O8
   title: Identify the barriers to making Astropy work easily in non-cloud HPC contexts
+  priority: medium
   key_results:
   - id: R8.1
     text: Review and categorize the HPC-related issues already reported across the astropy organization.
@@ -94,6 +102,7 @@ objectives:
 
 - id: O9
   title: Identify the barriers to making Astropy work easily in cloud contexts
+  priority: medium
   key_results:
   - id: R9.1
     text: Review and categorize the cloud-related issues already reported across the astropy organization.
@@ -106,6 +115,7 @@ objectives:
 
 - id: O10
   title: Develop a sustainable and recurring mechanism for measuring and understanding the Astropy user and developer communities, and for identifying gaps in the ecosystem for common astronomy tasks
+  priority: medium
   key_results:
   - id: R10.1
     text: Establish or assign a committee or designated role with explicit responsibility for tracking the health of the Astropy user and developer communities.
@@ -118,6 +128,7 @@ objectives:
 
 - id: O11
   title: Create a process to identify and ensure progress on longstanding issues that should be high priority
+  priority: medium
   key_results:
   - id: R11.1
     text: Establish or assign a committee or designated role with explicit responsibility for identifying longstanding high-priority issues and overseeing progress on them.

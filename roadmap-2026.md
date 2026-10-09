@@ -18,13 +18,13 @@ Every objective has an identifier such as `O3` and every key result has an ident
 
 The objectives and key results are defined in [`roadmap.yaml`](roadmap.yaml), and changes to their wording or priority are made by pull request to that file. This document is generated from it and from the GitHub issues that track progress: one issue per objective, linked from the line under its heading, with one sub-issue per key result, linked from the end of the key result. Status updates, links to funded work, and links to implementation pull requests belong in the issues. A key result is complete when its issue has been closed, and an objective is complete when the SPOC closes its issue, after which it is listed under completed objectives below. An entry that no longer applies is removed from the YAML file, which closes its issue; its identifier is not reused.
 
-Each objective may carry a priority (high, medium, or low) assigned by the SPOC. Priority reflects how important the SPOC considers it that progress is made before the next revision, independent of whether anyone is currently working on it.
+Each objective carries a priority (high, medium, or low) assigned by the SPOC. Priority reflects how important the SPOC considers it that progress is made before the next revision, independent of whether anyone is currently working on it.
 
 ## Objectives
 
 ### O1 Improve support for reading and writing ASDF files, optionally with GWCS coordinates, in the astropy core and coordinated packages
 
-*0 of 3 key results complete*
+*Priority: medium · 0 of 3 key results complete*
 
 - [ ] **R1.1** Publish a table listing, for the core and coordinated packages, every function and method that accepts FITS files as input or output, either as filenames or as HDU objects, and whether it also accepts ASDF filenames or objects.
 - [ ] **R1.2** Publish a list of the cases where support for ASDF and GWCS is not currently possible without significant upstream work in astropy, asdf-astropy, or the ASDF standard.
@@ -32,7 +32,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O2 Develop and implement a modern and maintainable strategy for FITS that improves performance and capabilities
 
-*0 of 5 key results complete*
+*Priority: medium · 0 of 5 key results complete*
 
 - [ ] **R2.1** Publish an APE outlining the plan to improve the performance and long-term maintainability of FITS support within the Astropy Project.
 - [ ] **R2.2** Develop a set of benchmarks that encapsulate the performance targets we want to achieve, for example constant time to open files as file sizes grow.
@@ -42,7 +42,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O3 Provide support for reading and writing spectra using the IVOA SpectrumDM in specutils
 
-*0 of 3 key results complete*
+*Priority: medium · 0 of 3 key results complete*
 
 - [ ] **R3.1** specutils can read any SpectrumDM-compatible VOTable, demonstrated using at least one spectrum downloaded from each of at least two different archives.
 - [ ] **R3.2** specutils can write a Spectrum object to a SpectrumDM-compliant VOTable given sufficient metadata, including validation that gives feedback to the user when the metadata is insufficient.
@@ -50,7 +50,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O4 Make astropy.units.Quantity a modern part of the Python array ecosystem by supporting any array-API-compliant backend
 
-*0 of 5 key results complete*
+*Priority: medium · 0 of 5 key results complete*
 
 - [ ] **R4.1** A new Quantity class that wraps any array-API-compliant array is merged to main with a stable, documented public API, building on the existing prototype.
 - [ ] **R4.2** The Quantity test suite runs in CI against NumPy and at least three other backends, including array-api-strict with a non-CPU device, with at least 90% of the suite passing for each.
@@ -60,7 +60,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O5 Provide supported, public ways of serializing astropy objects
 
-*0 of 3 key results complete*
+*Priority: medium · 0 of 3 key results complete*
 
 - [ ] **R5.1** Publish a list of astropy classes together with whether, and how, each can currently be serialized.
 - [ ] **R5.2** Decide on and document a single supported serialization approach, taking into account the existing representation dictionaries in astropy core, astropydantic, and the pydantic integration in stellarphot.
@@ -68,7 +68,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O6 Improve the robustness and reliability of performance benchmarking
 
-*0 of 3 key results complete*
+*Priority: medium · 0 of 3 key results complete*
 
 - [ ] **R6.1** Set up a GitHub self-hosted runner on dedicated hardware, where benchmarks can be bound to a specific core, with full documentation of how it was set up.
 - [ ] **R6.2** Switch the astropy core benchmarking job to this runner and demonstrate stable timings in line with local dedicated hardware.
@@ -76,7 +76,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O7 Increase the visibility and usage of coordinated packages beyond the core package
 
-*0 of 4 key results complete*
+*Priority: medium · 0 of 4 key results complete*
 
 - [ ] **R7.1** Make it possible to install groups of ecosystem packages by use case, for example `pip install astropy[photometry]` or `pip install astropy[spectroscopy]`.
 - [ ] **R7.2** The astropy.org landing page highlights the ecosystem and lets visitors navigate coordinated and affiliated packages by use case or domain rather than only presenting the core package.
@@ -85,7 +85,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O8 Identify the barriers to making Astropy work easily in non-cloud HPC contexts
 
-*0 of 4 key results complete*
+*Priority: medium · 0 of 4 key results complete*
 
 - [ ] **R8.1** Review and categorize the HPC-related issues already reported across the astropy organization.
 - [ ] **R8.2** Develop and carry out a survey of HPC users to identify the challenges they face when using Astropy.
@@ -94,7 +94,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O9 Identify the barriers to making Astropy work easily in cloud contexts
 
-*0 of 4 key results complete*
+*Priority: medium · 0 of 4 key results complete*
 
 - [ ] **R9.1** Review and categorize the cloud-related issues already reported across the astropy organization.
 - [ ] **R9.2** Develop and carry out a survey of cloud users to identify the challenges they face when using Astropy.
@@ -103,7 +103,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O10 Develop a sustainable and recurring mechanism for measuring and understanding the Astropy user and developer communities, and for identifying gaps in the ecosystem for common astronomy tasks
 
-*0 of 4 key results complete*
+*Priority: medium · 0 of 4 key results complete*
 
 - [ ] **R10.1** Establish or assign a committee or designated role with explicit responsibility for tracking the health of the Astropy user and developer communities.
 - [ ] **R10.2** Define a set of community health indicators for both the user and developer communities, covering for example demographics, use cases, needs, contributor statistics, and satisfaction.
@@ -112,7 +112,7 @@ Each objective may carry a priority (high, medium, or low) assigned by the SPOC.
 
 ### O11 Create a process to identify and ensure progress on longstanding issues that should be high priority
 
-*0 of 3 key results complete*
+*Priority: medium · 0 of 3 key results complete*
 
 - [ ] **R11.1** Establish or assign a committee or designated role with explicit responsibility for identifying longstanding high-priority issues and overseeing progress on them.
 - [ ] **R11.2** Produce an initial list of longstanding high-priority issues and translate them into objectives and key results in this Roadmap.

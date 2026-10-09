@@ -102,7 +102,7 @@ def load(path):
         if not check(obj, where, {"id", "title", "priority", "key_results"}, "title"):
             continue
         n = number(obj, "O", where, n)
-        if "priority" in obj and obj["priority"] not in PRIORITIES:
+        if obj.get("priority") not in PRIORITIES:
             errors.append(f"{where}: priority must be one of {', '.join(PRIORITIES)}")
         key_results = obj.get("key_results")
         if not isinstance(key_results, list) or not key_results:
@@ -253,9 +253,7 @@ def collect(doc, repo):
 
 def to_markdown(doc, text, repo, open_, completed):
     def objective(obj):
-        notes = []
-        if "priority" in obj:
-            notes.append(f"Priority: {obj['priority']}")
+        notes = [f"Priority: {obj['priority']}"]
         if obj["number"]:
             notes.append(f"Tracking issue: [#{obj['number']}]({obj['url']})")
         notes.append(f"{obj['n_done']} of {len(obj['key_results'])} key results complete")
