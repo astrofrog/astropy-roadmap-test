@@ -1,5 +1,6 @@
 # Every piece of wording used by roadmap.py: the page text, the footer, and the bodies of
-# the GitHub issues. The objectives and key results themselves are in roadmap.yaml.
+# the GitHub issues. The objectives and key results themselves are in roadmap.yaml, and
+# their issue numbers, completion dates and ranks are cached from GitHub in status.yaml.
 # Issue bodies are Jinja2 templates; the objective body sees the objective's fields plus
 # ``url``, and the key result body sees the key result's fields plus ``objective`` and ``url``.
 title: The Astropy Roadmap
@@ -16,9 +17,9 @@ sections:
 
     Every objective has an identifier such as `O3` and every key result has an identifier such as `R3.2`. Identifiers are stable: once assigned they are never renumbered or reused, so they can be cited in funding requests, issues, and pull requests without ambiguity. New objectives and key results take the next unused number.
 
-    The objectives and key results are defined in `roadmap.yaml` in the roadmap repository, and changes to their wording or priority are made by pull request to that file. This document is generated from it and from the GitHub issues that track progress: one issue per objective, linked from the line under its heading, with one sub-issue per key result, linked from the end of the key result. Status updates, links to funded work, and links to implementation pull requests belong in the issues. A key result is complete when its issue has been closed, and an objective is complete when the SPOC closes its issue, after which it is listed under completed objectives below. An entry that no longer applies is removed from the YAML file, which closes its issue; its identifier is not reused.
+    The objectives and key results are defined in `roadmap.yaml` in the roadmap repository, and changes to their wording are made by pull request to that file. This document is generated from it and from the GitHub issues that track progress: one issue per objective, linked from the line under its heading, with one sub-issue per key result, linked from the end of the key result. Status updates, links to funded work, and links to implementation pull requests belong in the issues. A key result is complete when its issue has been closed, and an objective is complete when the SPOC closes its issue, after which it is listed under completed objectives below. An entry that no longer applies is removed from the YAML file, which closes its issue; its identifier is not reused.
 
-    Each objective carries a priority (high, medium, or low) assigned by the SPOC. Priority reflects how important the SPOC considers it that progress is made before the next revision, independent of whether anyone is currently working on it.
+    Open objectives are ranked by the SPOC, with rank 1 the highest priority, and are listed in rank order. The rank reflects how important the SPOC considers it that progress is made before the next revision, independent of whether anyone is currently working on it. The SPOC sets it by ordering the objective issues on the roadmap's GitHub project board; an objective not yet placed in the ranking is listed last as unranked.
 
 footer: Objectives and key results are maintained by the Astropy Strategic Planning and Organizing Committee.
 
@@ -32,9 +33,10 @@ issues:
     - **{{ kr.id }}** {{ kr.text }}
     {% endfor %}
 
-    Each key result is tracked as a sub-issue of this issue. Changes to the wording or priority
-    of the objective are made by pull request to `roadmap.yaml`; progress updates and links to
-    funded work and implementation PRs belong here. Close this issue when the objective has
+    Each key result is tracked as a sub-issue of this issue. Changes to the wording of the
+    objective are made by pull request to `roadmap.yaml`, and its rank is set by its position
+    on the roadmap project board; progress updates and links to funded work and implementation
+    PRs belong here. Close this issue when the objective has
     been achieved.
   key_result: |
     Key result **{{ id }}** of objective **{{ objective.id }}**{% if objective.number %} (#{{ objective.number }}){% endif %}: {{ text }}

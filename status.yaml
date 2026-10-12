@@ -1,0 +1,56 @@
+# Written by roadmap.py pull from GitHub; do not edit.
+repository: astrofrog/astropy-roadmap-test
+as_of: 2026-10-09
+entries:
+  O1: {issue: 1}
+  R1.1: {issue: 2, completed: 2026-10-08}
+  R1.2: {issue: 3}
+  R1.3: {issue: 4}
+  O2: {issue: 5}
+  R2.1: {issue: 6}
+  R2.2: {issue: 7}
+  R2.3: {issue: 8}
+  R2.4: {issue: 9}
+  R2.5: {issue: 10}
+  O3: {issue: 11}
+  R3.1: {issue: 12}
+  R3.2: {issue: 13}
+  R3.3: {issue: 14}
+  O4: {issue: 15}
+  R4.1: {issue: 16}
+  R4.2: {issue: 17}
+  R4.3: {issue: 18}
+  R4.4: {issue: 19}
+  R4.5: {issue: 20}
+  O5: {issue: 21}
+  R5.1: {issue: 22}
+  R5.2: {issue: 23}
+  R5.3: {issue: 24}
+  O6: {issue: 25}
+  R6.1: {issue: 26}
+  R6.2: {issue: 27}
+  R6.3: {issue: 28}
+  O7: {issue: 29}
+  R7.1: {issue: 30}
+  R7.2: {issue: 31}
+  R7.3: {issue: 32}
+  R7.4: {issue: 33}
+  O8: {issue: 34}
+  R8.1: {issue: 35}
+  R8.2: {issue: 36}
+  R8.3: {issue: 37}
+  R8.4: {issue: 38}
+  O9: {issue: 39}
+  R9.1: {issue: 40}
+  R9.2: {issue: 41}
+  R9.3: {issue: 42}
+  R9.4: {issue: 43}
+  O10: {issue: 44}
+  R10.1: {issue: 45}
+  R10.2: {issue: 46}
+  R10.3: {issue: 47}
+  R10.4: {issue: 48}
+  O11: {issue: 49}
+  R11.1: {issue: 50}
+  R11.2: {issue: 51}
+  R11.3: {issue: 52}

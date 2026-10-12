@@ -5,6 +5,8 @@ Astropy Strategic Planning and Organizing Committee (SPOC).
 
 - `roadmap.yaml` is the canonical record of the objectives and key results. Change it by
   pull request. Identifiers are never renumbered or reused.
+- `status.yaml` is a cache of what GitHub records: issue numbers, completion dates, and
+  the rank of each open objective. It is written by the weekly workflow, never by hand.
 - `text.yaml` holds the wording of the published page and of the GitHub tracking issues.
 - `roadmap.py` validates the two files, creates and updates one tracking issue per
   objective and one sub-issue per key result, and renders the page. Run
@@ -13,7 +15,7 @@ Astropy Strategic Planning and Organizing Committee (SPOC).
   rendering it from the YAML at build time.
 
 Progress is tracked in the issues: closing a key result issue marks it done, and the SPOC
-closes an objective issue when the objective has been achieved. A weekly workflow records
-issue numbers and completion dates back into `roadmap.yaml` and opens a pull request with
-the result, so the file is a complete record and the page can be built without GitHub
-access. The `issue` and `completed` fields are written by that workflow, not by hand.
+closes an objective issue when the objective has been achieved. The SPOC ranks the open
+objectives by ordering their issues on the roadmap project board. A weekly workflow
+records issue numbers, completion dates and the ranking in `status.yaml` and opens a pull
+request with the result, so the page can be built without GitHub access.
