@@ -200,7 +200,12 @@ def entry_url(site, obj):
 
 def sync(doc, text, repo, site, dry):
     existing = issues(repo)
-    changes = []
+    quiet = True
+
+    def report(line):
+        nonlocal quiet
+        quiet = False
+        print(line, flush=True)
 
     def api(method, path, **payload):
         return run("api", "-X", method, f"repos/{repo}/{path}", payload=payload)
@@ -219,14 +224,14 @@ def sync(doc, text, repo, site, dry):
             }
             if patch := {k: v for k, v in want.items() if v != have[k]}:
                 what = " and ".join(patch).replace("body", "description")
-                changes.append(f"updated #{issue['number']} {entry['id']}: {what}")
+                report(f"updated #{issue['number']} {entry['id']}: {what}")
                 dry or api("PATCH", f"issues/{issue['number']}", **patch)
             return issue["number"]
         if dry:
-            changes.append(f"created {title}")
+            report(f"created {title}")
             return None
         issue = api("POST", "issues", title=title, body=body, labels=labels)
-        changes.append(f"created #{issue['number']} {title}")
+        report(f"created #{issue['number']} {title}")
         if parent:
             # The endpoint wants the database id of the sub-issue, not its number.
             api("POST", f"issues/{parent}/sub_issues", sub_issue_id=issue["id"])
@@ -248,11 +253,12 @@ def sync(doc, text, repo, site, dry):
     # Whatever is left was removed from the YAML, including the key results of a removed objective.
     for entry_id, issue in existing.items():
         if issue["state"] == "OPEN":
-            changes.append(f"closed  #{issue['number']} {entry_id}: removed from the roadmap")
+            report(f"closed  #{issue['number']} {entry_id}: removed from the roadmap")
             dry or api(
                 "PATCH", f"issues/{issue['number']}", state="closed", state_reason="not_planned"
             )
-    print("\n".join(changes) or "issues already match the roadmap")
+    if quiet:
+        print("issues already match the roadmap")
 
 
 def load_status(path):
@@ -262,7 +268,7 @@ def load_status(path):
 
 
 def pull(doc, path, repo, project, dry):
-    """Write the status cache from GitHub and return the list of changes.
+    """Write the status cache from GitHub, printing one line per change.
 
     The file is written only when something changed, so that ``as_of`` is the
     date the status last changed.
@@ -290,36 +296,38 @@ def pull(doc, path, repo, project, dry):
         for rank, entry_id in enumerate(ranking, 1):
             entries[entry_id]["rank"] = rank
     old = load_status(path)
-    changes = []
+    new = {"repository": repo, "project": project, "entries": entries}
+    if all(old.get(key) == value for key, value in new.items()):
+        print("status already recorded")
+        return
     if old.get("repository") != repo:
-        changes.append(f"tracking issues are in {repo}")
+        print(f"tracking issues are in {repo}")
     if old.get("project") != project:
-        changes.append(
-            f"objectives are ranked on {project}" if project else "objectives are not ranked"
-        )
+        print(f"objectives are ranked on {project}" if project else "objectives are not ranked")
     before = old.get("entries") or {}
     for entry_id, e in entries.items():
         b = before.get(entry_id, {})
         if b.get("issue") != e["issue"]:
-            changes.append(f"{entry_id} is tracked in #{e['issue']}")
+            print(f"{entry_id} is tracked in #{e['issue']}")
         if "completed" in e and b.get("completed") != e["completed"]:
-            changes.append(f"{entry_id} completed on {e['completed']}")
+            print(f"{entry_id} completed on {e['completed']}")
         elif "completed" in b and "completed" not in e:
-            changes.append(f"{entry_id} reopened, no longer complete")
-    changes += [f"{entry_id} is no longer tracked" for entry_id in before.keys() - entries.keys()]
+            print(f"{entry_id} reopened, no longer complete")
+    for entry_id in before.keys() - entries.keys():
+        print(f"{entry_id} is no longer tracked")
 
     def ranking(entries):
-        return sorted((e["rank"], entry_id) for entry_id, e in entries.items() if "rank" in e)
+        return sorted(
+            (i for i, e in entries.items() if "rank" in e), key=lambda i: entries[i]["rank"]
+        )
 
-    if ranking(before) != ranking(entries):
-        order = ", ".join(entry_id for _, entry_id in ranking(entries))
-        changes.append(f"ranking is now {order}" if order else "no objectives are ranked")
-    if changes and not dry:
-        new = {"repository": repo, "project": project, "as_of": today(), "entries": entries}
+    if (order := ranking(entries)) != ranking(before):
+        print(f"ranking is now {', '.join(order)}" if order else "no objectives are ranked")
+    if not dry:
         with Path(path).open("w") as f:
             f.write("# Written by roadmap.py pull from GitHub; do not edit.\n")
+            new = {"repository": repo, "project": project, "as_of": today(), "entries": entries}
             yaml.dump({k: v for k, v in new.items() if v is not None}, f)
-    return changes
 
 
 def render(doc, text, status):
@@ -406,8 +414,7 @@ def main():
                 raise SystemExit("aborted")
         sync(doc, text, args.repo, args.site, args.dry_run)
     elif args.command == "pull":
-        changes = pull(doc, status_path, args.repo, args.project, args.dry_run)
-        print("\n".join(changes) or "status already recorded")
+        pull(doc, status_path, args.repo, args.project, args.dry_run)
     else:
         Path(args.output).write_text(render(doc, text, load_status(status_path)))
 
