@@ -2,7 +2,7 @@
 """Maintain the roadmap from its canonical YAML files.
 
     python roadmap.py validate roadmap.yaml
-    python roadmap.py sync roadmap.yaml --repo OWNER/REPO --site URL [--project URL] [--dry-run] [--yes]
+    python roadmap.py sync roadmap.yaml --repo OWNER/REPO --site URL [--dry-run] [--yes]
     python roadmap.py pull roadmap.yaml --repo OWNER/REPO [--project URL] [--dry-run]
     python roadmap.py render roadmap.yaml roadmap.md
 
@@ -13,13 +13,13 @@ Identifiers are never renumbered or reused; an entry that no longer applies is
 removed, leaving a gap. Progress lives in GitHub, with one issue per objective
 and one sub-issue per key result, and a closed issue is the record that its
 entry is done. Open objectives are ranked by the order of their issues on a
-GitHub project board.
+GitHub project board, which adds new objective issues itself through its
+built-in auto-add workflow (filter ``is:issue label:objective``).
 
 ``validate`` checks the structure of both files. ``sync`` makes the issues
 match the YAML: missing ones are created, titles, descriptions and labels are
 updated, and issues for entries no longer in the file are closed; it never
-deletes. With ``--project`` it also adds objective issues missing from the
-board to the bottom of it. ``pull`` goes the other way: it writes
+deletes. ``pull`` goes the other way: it writes
 ``status.yaml`` next to the roadmap (or the file given with ``--status``), a
 cache of what GitHub records: each entry's issue number, the date its issue
 was closed, and, with ``--project``, the rank of each open objective on the
@@ -28,7 +28,7 @@ print one line per change and nothing else, so the output can serve as a
 change log. ``render`` writes the markdown document from the YAML files alone,
 without the status if ``status.yaml`` is missing; the documentation build in
 ``docs/`` calls it at build time. ``gh`` must be authenticated for ``sync`` and
-``pull``, with the ``project`` scope for ``--project``.
+``pull``, with the ``read:project`` scope for ``--project``.
 """
 
 import argparse
@@ -156,20 +156,20 @@ def load_text(path):
 
 def issues(repo):
     """Return {identifier: issue} for every roadmap issue in the repository."""
-    fields = "id,number,title,body,state,labels,closedAt"
+    fields = "number,title,body,state,labels,closedAt"
     found = run(*f"issue list -R {repo} -l roadmap -s all -L 1000 --json {fields}".split())
     return {m[1]: issue for issue in found if (m := re.match(r"(O\d+|R\d+\.\d+):", issue["title"]))}
 
 
 def project_items(url):
-    """Return the project's node id and its issues as (repository, number), in board order."""
+    """Return the project's issues as (repository, number), in board order."""
     m = PROJECT_URL.fullmatch(url)
     if not m:
         raise SystemExit(f"{url}: expected a URL such as https://github.com/orgs/NAME/projects/1")
     owner = {"users": "user", "orgs": "organization"}[m[1]]
     query = f"""
     query($login: String!, $number: Int!, $after: String) {{
-      {owner}(login: $login) {{ projectV2(number: $number) {{ id
+      {owner}(login: $login) {{ projectV2(number: $number) {{
         items(first: 100, after: $after, orderBy: {{field: POSITION, direction: ASC}}) {{
           pageInfo {{ hasNextPage endCursor }}
           nodes {{ content {{ ... on Issue {{ number repository {{ nameWithOwner }} }} }} }}
@@ -189,7 +189,7 @@ def project_items(url):
             if (c := node["content"]) and "number" in c
         ]
         if not page["pageInfo"]["hasNextPage"]:
-            return project["id"], items
+            return items
         after = page["pageInfo"]["endCursor"]
 
 
@@ -198,7 +198,7 @@ def entry_url(site, obj):
     return f"{site.rstrip('/')}/#{anchor}"
 
 
-def sync(doc, text, repo, site, project, dry):
+def sync(doc, text, repo, site, dry):
     existing = issues(repo)
     changes = []
 
@@ -209,7 +209,7 @@ def sync(doc, text, repo, site, project, dry):
     body_of = {kind: env.from_string(text["issues"][kind]) for kind in ("objective", "key_result")}
 
     def ensure(entry, title, body, labels, parent=None):
-        """Create or update the issue for an entry; return its number and node id, or Nones in a dry run."""
+        """Create or update the issue for an entry; return its number, or None in a dry run."""
         if issue := existing.pop(entry["id"], None):
             want = {"title": title, "body": body, "labels": sorted(labels)}
             have = {
@@ -221,25 +221,23 @@ def sync(doc, text, repo, site, project, dry):
                 what = " and ".join(patch).replace("body", "description")
                 changes.append(f"updated #{issue['number']} {entry['id']}: {what}")
                 dry or api("PATCH", f"issues/{issue['number']}", **patch)
-            return issue["number"], issue["id"]
+            return issue["number"]
         if dry:
             changes.append(f"created {title}")
-            return None, None
+            return None
         issue = api("POST", "issues", title=title, body=body, labels=labels)
         changes.append(f"created #{issue['number']} {title}")
         if parent:
             # The endpoint wants the database id of the sub-issue, not its number.
             api("POST", f"issues/{parent}/sub_issues", sub_issue_id=issue["id"])
-        return issue["number"], issue["node_id"]
+        return issue["number"]
 
     for name, color in LABELS.items():
         dry or run("label", "create", name, "-R", repo, "--color", color, "--force")
-    objective_issues = []
     for obj in doc["objectives"]:
         url = entry_url(site, obj)
         body = body_of["objective"].render(**obj, url=url).strip()
-        number, node = ensure(obj, f"{obj['id']}: {obj['title']}", body, ["roadmap", "objective"])
-        objective_issues.append((obj["id"], number, node))
+        number = ensure(obj, f"{obj['id']}: {obj['title']}", body, ["roadmap", "objective"])
         for kr in obj["key_results"]:
             body = (
                 body_of["key_result"]
@@ -254,22 +252,6 @@ def sync(doc, text, repo, site, project, dry):
             dry or api(
                 "PATCH", f"issues/{issue['number']}", state="closed", state_reason="not_planned"
             )
-    if project:
-        project_id, items = project_items(project)
-        for entry_id, number, node in objective_issues:
-            if (repo, number) not in items:
-                changes.append(
-                    f"added   {f'#{number} ' if number else ''}{entry_id} to the project"
-                )
-                dry or run(
-                    "api",
-                    "graphql",
-                    payload={
-                        "query": "mutation($p: ID!, $c: ID!) {"
-                        " addProjectV2ItemById(input: {projectId: $p, contentId: $c}) { item { id } } }",
-                        "variables": {"p": project_id, "c": node},
-                    },
-                )
     print("\n".join(changes) or "issues already match the roadmap")
 
 
@@ -302,7 +284,7 @@ def pull(doc, path, repo, project, dry):
         }
         ranking = [
             open_objectives[n]
-            for r, n in project_items(project)[1]
+            for r, n in project_items(project)
             if r == repo and n in open_objectives
         ]
         for rank, entry_id in enumerate(ranking, 1):
@@ -393,13 +375,13 @@ def main():
         if name in ("sync", "pull"):
             sp.add_argument("--repo", required=True, help="GitHub repository as owner/name")
             sp.add_argument(
-                "--project", help="URL of the GitHub project board that ranks the objectives"
-            )
-            sp.add_argument(
                 "--dry-run", action="store_true", help="report changes without making them"
             )
     sub.choices["sync"].add_argument(
         "--site", required=True, help="URL of the published roadmap page, for links in issue bodies"
+    )
+    sub.choices["pull"].add_argument(
+        "--project", help="URL of the GitHub project board that ranks the objectives"
     )
     sub.choices["sync"].add_argument(
         "--yes", action="store_true", help="do not ask for confirmation"
@@ -422,7 +404,7 @@ def main():
             answer = input(f"Create and update roadmap issues in {args.repo}? [y/N] ")
             if answer.strip().lower() not in ("y", "yes"):
                 raise SystemExit("aborted")
-        sync(doc, text, args.repo, args.site, args.project, args.dry_run)
+        sync(doc, text, args.repo, args.site, args.dry_run)
     elif args.command == "pull":
         changes = pull(doc, status_path, args.repo, args.project, args.dry_run)
         print("\n".join(changes) or "status already recorded")
