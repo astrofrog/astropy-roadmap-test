@@ -44,6 +44,7 @@ objectives:
   - id: KR3.1
     title: specutils can read any SpectrumDM-compatible VOTable, demonstrated using at least one spectrum downloaded from each of at least two different archives.
     url: https://github.com/astrofrog/astropy-roadmap-test/issues/12
+    not_planned: 2026-10-13
   - id: KR3.2
     title: specutils can write a Spectrum object to a SpectrumDM-compliant VOTable given sufficient metadata, including validation that gives feedback to the user when the metadata is insufficient.
     url: https://github.com/astrofrog/astropy-roadmap-test/issues/13
