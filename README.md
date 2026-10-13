@@ -3,19 +3,15 @@
 The roadmap is a set of objectives, each with measurable key results, maintained by the
 Astropy Strategic Planning and Organizing Committee (SPOC).
 
-- `roadmap.yaml` is the canonical record of the objectives and key results. Change it by
-  pull request. Identifiers are never renumbered or reused.
-- `status.yaml` is a cache of what GitHub records: issue numbers, completion dates, and
-  the rank of each open objective. It is written by the weekly workflow, never by hand.
-- `text.yaml` holds the wording of the published page and of the GitHub tracking issues.
-- `roadmap.py` validates the two files, creates and updates one tracking issue per
-  objective and one sub-issue per key result, and renders the page. Run
-  `python roadmap.py --help` for the commands.
-- `docs/` is the Sphinx configuration that Read the Docs builds into the published page,
-  rendering it from the YAML at build time.
+The roadmap lives in GitHub. Each objective is an issue on the roadmap project board, and
+its key results are sub-issues of that issue. Every title starts with the entry's
+identifier, such as `O3: ...` or `R3.2: ...`; identifiers are chosen by hand, take the
+next unused number, and are never renumbered or reused. The SPOC ranks the open objectives
+by ordering them on the board. Closing an issue as completed marks its entry done, and
+closing it as not planned removes it from the roadmap.
 
-Progress is tracked in the issues: closing a key result issue marks it done, and the SPOC
-closes an objective issue when the objective has been achieved. The SPOC ranks the open
-objectives by ordering their issues on the roadmap project board. A weekly workflow
-records issue numbers, completion dates and the ranking in `status.yaml` and opens a pull
-request with the result, so the page can be built without GitHub access.
+A weekly workflow runs `python roadmap.py pull`, which writes `roadmap.yaml`, a snapshot
+of the issues, and opens a pull request with the changes. It stops with a list of
+problems if an identifier is missing, does not match its objective, or is used twice.
+`text.yaml` holds the wording of the published page, which Read the Docs renders from the
+two files with `python roadmap.py render`.

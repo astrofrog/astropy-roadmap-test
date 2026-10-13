@@ -1,6 +1,6 @@
 """Sphinx configuration for the roadmap site.
 
-The page is rendered from roadmap.yaml, text.yaml and status.yaml at the start of every build, so no
+The page is rendered from roadmap.yaml and text.yaml at the start of every build, so no
 generated file is kept in the repository. The theme is the one used by astropy.org.
 """
 
@@ -12,10 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import roadmap
 
-doc = roadmap.load(ROOT / "roadmap.yaml")
-text = roadmap.load_text(ROOT / "text.yaml")
-status = roadmap.load_status(ROOT / "status.yaml")
-Path(__file__).with_name("index.md").write_text(roadmap.render(doc, text, status))
+text = roadmap.load(ROOT / "text.yaml")
+markdown = roadmap.render(roadmap.load(ROOT / "roadmap.yaml"), text)
+Path(__file__).with_name("index.md").write_text(markdown)
 
 project = text["title"]
 copyright = "The Astropy Developers"
