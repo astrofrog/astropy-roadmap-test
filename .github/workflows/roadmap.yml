@@ -3,7 +3,9 @@
 # Weekly or on demand: read the objectives and key results from the issues on
 # the project board, write them to roadmap.yaml, and open or update a pull
 # request with the changes for the SPOC to merge. The web page is built by Read
-# the Docs from roadmap.yaml, so nothing generated is committed.
+# the Docs from roadmap.yaml, so nothing generated is committed. If an issue
+# title is wrong, the problems are reported in a "Roadmap snapshot failed"
+# issue, which the next successful run closes.
 #
 # The repository setting "Allow GitHub Actions to create and approve pull
 # requests" must be enabled. The default token cannot read project boards, so
@@ -22,13 +24,44 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
       pull-requests: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      FAILURE_TITLE: Roadmap snapshot failed
     steps:
       - uses: actions/checkout@v4
       - run: pip install ruamel.yaml jinja2
-      - run: python roadmap.py pull https://github.com/users/astrofrog/projects/5 roadmap.yaml
+      - run: python roadmap.py pull https://github.com/users/astrofrog/projects/5 roadmap.yaml 2>&1 | tee pull.log
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.ROADMAP_TOKEN }}
+      - name: Report the problems in an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The roadmap snapshot could not be written ([log]($RUN_URL))."
+            echo "Fix the issues below; the next run will try again."
+            echo
+            sed 's/^/- /' pull.log
+          } > body.md
+          number=$(gh issue list --state open --search "in:title \"$FAILURE_TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file body.md
+          else
+            gh issue create --title "$FAILURE_TITLE" --body-file body.md
+          fi
+      - name: Close the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number=$(gh issue list --state open --search "in:title \"$FAILURE_TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "The roadmap snapshot succeeded again."
+          fi
       - uses: peter-evans/create-pull-request@v7
         with:
           branch: roadmap-snapshot

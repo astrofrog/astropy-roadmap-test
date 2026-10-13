@@ -101,7 +101,9 @@ def make_entry(issue, prefix, errors):
         return None
     match = TITLE.fullmatch(issue["title"].strip())
     if match is None or not match["id"].startswith(prefix):
-        errors.append(f"{issue['url']}: {issue['title']!r} should start with {prefix}<number>:")
+        errors.append(
+            f"{issue['url']}: {issue['title']!r} should start with an identifier such as {prefix}1:"
+        )
         return None
     entry = {"id": match["id"], "title": match["title"], "url": issue["url"]}
     if closed:
