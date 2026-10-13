@@ -1,6 +1,11 @@
-/* Completion notes written by roadmap.py at the end of key result lines. */
+/* Status notes written by roadmap.py at the end of objective and key result lines. */
 .completed {
   color: var(--pst-color-success);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.not-planned {
+  color: var(--pst-color-text-muted);
   white-space: nowrap;
 }

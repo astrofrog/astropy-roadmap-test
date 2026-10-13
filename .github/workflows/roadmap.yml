@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install ruamel.yaml jinja2
-      - run: python roadmap.py pull ${{ github.repository }} https://github.com/users/astrofrog/projects/5 roadmap.yaml 2>&1 | tee pull.log
+      - run: python roadmap.py 2>&1 | tee pull.log
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ROADMAP_TOKEN }}

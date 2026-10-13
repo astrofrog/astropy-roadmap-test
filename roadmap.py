@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Snapshot the roadmap from GitHub and render it.
+"""Snapshot the roadmap from GitHub, and render it for the documentation.
 
-    python roadmap.py pull OWNER/REPO PROJECT_URL roadmap.yaml
-    python roadmap.py render roadmap.yaml roadmap.md
+    python roadmap.py
 
-The roadmap lives in the issues of a GitHub repository. Every issue with the
+The roadmap lives in the issues of the GitHub repository set in REPOSITORY. Every issue with the
 ``objective`` label is an objective, titled with its identifier such as
-``O3: ...``, and its sub-issues, titled ``R3.1: ...``, ``R3.2: ...`` and so on,
-are its key results.
+``O3: ...``. Every issue with the ``key result`` label is a key result, titled
+``R3.1: ...``, ``R3.2: ...`` and so on, and is a sub-issue of its objective.
 Identifiers are never renumbered or reused. An issue closed as completed marks
-its entry done, and one closed for any other reason removes it from the
-roadmap. Open objectives on the project board are ranked by their order there;
-open objectives not on the board are unranked.
+its entry done, and one closed for any other reason marks it not planned; both
+stay in the roadmap as a record. An issue opened by mistake is taken out of the
+roadmap by removing its label. Open objectives on the project board set in
+PROJECT are ranked by their order there; open objectives not on the board are
+unranked.
 
-``pull`` writes all of this to a YAML snapshot, leaving the file alone if
-nothing has changed. It exits without writing if the issues are inconsistent,
-and prints a warning for anything that is allowed but probably a mistake.
-``render`` writes the markdown page from the snapshot and the page wording in
-``text.yaml`` next to it; the documentation build in ``docs/`` calls it. ``gh``
-must be authenticated with the ``read:project`` scope for ``pull``.
+Running this script writes all of this to the YAML snapshot in SNAPSHOT,
+leaving the file alone if nothing has changed. It exits without writing if the
+issues are inconsistent, and prints a warning for anything that is allowed but
+probably a mistake. ``gh`` must be authenticated with the ``read:project``
+scope. The documentation build in ``docs/`` calls ``render``, which returns the
+markdown page from the snapshot and the page wording in TEXT.
 """
 
-import argparse
 import datetime
 import json
 import re
@@ -31,6 +31,12 @@ from pathlib import Path
 
 import jinja2
 from ruamel.yaml import YAML
+
+REPOSITORY = "astrofrog/astropy-roadmap-test"
+PROJECT = "https://github.com/users/astrofrog/projects/5"
+HERE = Path(__file__).resolve().parent
+SNAPSHOT = HERE / "roadmap.yaml"
+TEXT = HERE / "text.yaml"
 
 yaml = YAML(typ="safe", pure=True)
 yaml.sort_base_mapping_type_on_output = False
@@ -42,24 +48,23 @@ PROJECT_URL = re.compile(
 )
 IDENTIFIER = re.compile(r"(?P<prefix>O|R\d+\.)(?P<number>\d+)")
 TITLE = re.compile(rf"(?P<id>{IDENTIFIER.pattern}):\s*(?P<title>.+)")
-MAX_KEY_RESULTS = 5
 OBJECTIVE_LABEL = "objective"
+KEY_RESULT_LABEL = "key result"
 
-# Every issue in a repository, open and closed, each with its labels and sub-issues.
+# Every issue in a repository, open and closed, with its labels and parent issue.
 ISSUES_QUERY = """
 query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
     issues(first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ...entry
+        title url state stateReason closedAt
         labels(first: 20) { nodes { name } }
-        subIssues(first: 50) { nodes { ...entry } }
+        parent { url }
       }
     }
   }
 }
-fragment entry on Issue { title url state stateReason closedAt }
 """
 
 # The URLs of the issues on a project board, in board order. The owner field,
@@ -94,7 +99,7 @@ def graphql(query, **variables):
 
 
 def fetch_issues(repo):
-    """Return every issue in the repository, open and closed, with its sub-issues."""
+    """Return every issue in the repository, open and closed."""
     owner, name = repo.split("/")
     issues = []
     after = None
@@ -127,25 +132,28 @@ def fetch_board(project):
     return urls
 
 
-def is_removed(issue):
-    """Return whether an issue was closed for a reason other than being completed."""
-    return issue["state"] == "CLOSED" and issue["stateReason"] != "COMPLETED"
-
-
-def is_objective(issue):
-    """Return whether an issue has the objective label."""
+def labels(issue):
+    """Return the names of an issue's labels."""
+    names = set()
     for label in issue["labels"]["nodes"]:
-        if label["name"] == OBJECTIVE_LABEL:
-            return True
-    return False
+        names.add(label["name"])
+    return names
 
 
 def make_entry(issue, match):
     """Return the snapshot entry for an issue whose title matched TITLE."""
     entry = {"id": match["id"], "title": match["title"], "url": issue["url"]}
     if issue["state"] == "CLOSED":
-        entry["completed"] = datetime.date.fromisoformat(issue["closedAt"][:10])
+        closed = datetime.date.fromisoformat(issue["closedAt"][:10])
+        if issue["stateReason"] == "COMPLETED":
+            entry["completed"] = closed
+        else:
+            entry["not_planned"] = closed
     return entry
+
+
+def is_open(entry):
+    return "completed" not in entry and "not_planned" not in entry
 
 
 def id_number(entry):
@@ -154,198 +162,172 @@ def id_number(entry):
 
 
 def build_roadmap(issues, board):
-    """Return the snapshot's objectives and a list of warnings.
-
-    Exits listing every error if the issues are inconsistent.
-    """
+    """Return the snapshot's objectives, or exit listing every error in the issues."""
     errors = []
-    # Every identifier in use, including by removed entries, with the issues using it.
-    uses = defaultdict(list)
-    sub_issue_urls = set()
-    objectives = []
-    key_results_of = {}
-
+    objectives_by_url = {}
+    # Objectives whose title is wrong; their key results are skipped, not reported too.
+    broken_objective_urls = set()
+    key_result_issues = []
     for issue in issues:
-        if not is_objective(issue):
-            continue
-        for sub_issue in issue["subIssues"]["nodes"]:
-            sub_issue_urls.add(sub_issue["url"])
         match = TITLE.fullmatch(issue["title"].strip())
-        if match is None or match["prefix"] != "O":
-            if not is_removed(issue):
+        if OBJECTIVE_LABEL in labels(issue):
+            if match is None or match["prefix"] != "O":
                 errors.append(
                     f"{issue['url']}: {issue['title']!r} should start with"
                     " an identifier such as O1:"
                 )
-            continue
-        uses[match["id"]].append(issue)
-        prefix = f"R{match['number']}."
-        key_results = []
-        for sub_issue in issue["subIssues"]["nodes"]:
-            sub_match = TITLE.fullmatch(sub_issue["title"].strip())
-            if sub_match is not None and sub_match["prefix"] == prefix:
-                uses[sub_match["id"]].append(sub_issue)
-                if not is_removed(sub_issue):
-                    key_results.append(make_entry(sub_issue, sub_match))
-            elif not is_removed(sub_issue) and not is_removed(issue):
+                broken_objective_urls.add(issue["url"])
+            else:
+                objectives_by_url[issue["url"]] = make_entry(issue, match)
+        elif KEY_RESULT_LABEL in labels(issue):
+            if match is None or match["prefix"] == "O":
                 errors.append(
-                    f"{sub_issue['url']}: {sub_issue['title']!r} should start with"
-                    f" an identifier such as {prefix}1:"
+                    f"{issue['url']}: {issue['title']!r} should start with"
+                    " an identifier such as R1.1:"
                 )
-        if not is_removed(issue):
-            objective = make_entry(issue, match)
-            objectives.append(objective)
-            key_results_of[objective["id"]] = sorted(key_results, key=id_number)
+            else:
+                key_result_issues.append((issue, match))
 
-    # Objectives without the label, and key results that are not sub-issues of their
-    # objective, would otherwise be left out silently.
-    for issue in issues:
-        match = TITLE.fullmatch(issue["title"].strip())
-        if match is None or is_removed(issue):
-            continue
-        if match["prefix"] == "O" and not is_objective(issue):
+    key_results_by_url = defaultdict(list)
+    for issue, match in key_result_issues:
+        parent = issue["parent"]
+        objective = None
+        if parent is not None:
+            if parent["url"] in broken_objective_urls:
+                continue
+            objective = objectives_by_url.get(parent["url"])
+        if objective is None:
+            errors.append(f"{issue['url']}: {match['id']} is not a sub-issue of an objective")
+        elif match["prefix"] != f"R{id_number(objective)}.":
             errors.append(
-                f"{issue['url']}: {match['id']} does not have the {OBJECTIVE_LABEL} label"
+                f"{issue['url']}: {match['id']} is a key result of {objective['id']},"
+                f" so its identifier should start with R{id_number(objective)}."
             )
-        elif match["prefix"] != "O" and issue["url"] not in sub_issue_urls:
-            errors.append(f"{issue['url']}: {match['id']} is not a sub-issue of its objective")
+        else:
+            key_results_by_url[parent["url"]].append(make_entry(issue, match))
 
-    for identifier, users in uses.items():
-        live = []
-        for issue in users:
-            if not is_removed(issue):
-                live.append(issue["url"])
-        if len(live) > 1:
-            errors.append(f"{identifier} is used by more than one issue: {', '.join(live)}")
+    urls_by_id = defaultdict(list)
+    for url, objective in objectives_by_url.items():
+        urls_by_id[objective["id"]].append(url)
+        for key_result in key_results_by_url[url]:
+            urls_by_id[key_result["id"]].append(key_result["url"])
+    for identifier, urls in urls_by_id.items():
+        if len(urls) > 1:
+            errors.append(f"{identifier} is used by more than one issue: {', '.join(urls)}")
     if errors:
         raise SystemExit("\n".join(errors))
 
     # Open objectives on the board are ranked in board order; the rest are unranked.
     position = {url: index for index, url in enumerate(board)}
     ranked = []
-    for objective in objectives:
-        if "completed" not in objective and objective["url"] in position:
+    for url, objective in objectives_by_url.items():
+        if is_open(objective) and url in position:
             ranked.append(objective)
     ranked.sort(key=lambda objective: position[objective["url"]])
     for rank, objective in enumerate(ranked, 1):
         objective["rank"] = rank
 
     # The key results are added last so that they come last in each entry of the file.
-    for objective in objectives:
-        objective["key_results"] = key_results_of[objective["id"]]
-    objectives.sort(key=id_number)
-    return objectives, find_warnings(uses, objectives)
+    objectives = []
+    for url, objective in objectives_by_url.items():
+        objective["key_results"] = sorted(key_results_by_url[url], key=id_number)
+        objectives.append(objective)
+    return sorted(objectives, key=id_number)
 
 
-def find_warnings(uses, objectives):
-    """Return warnings about identifiers and objectives that are allowed but look wrong."""
+def find_warnings(issues, objectives):
+    """Return warnings about issues and objectives that are allowed but look wrong."""
     warnings = []
-    numbers_used = defaultdict(set)
-    for identifier, users in uses.items():
-        match = IDENTIFIER.fullmatch(identifier)
-        numbers_used[match["prefix"]].add(int(match["number"]))
-        removed = []
-        live = []
-        for issue in users:
-            if is_removed(issue):
-                removed.append(issue["url"])
-            else:
-                live.append(issue["url"])
-        if removed and live:
+    for issue in issues:
+        match = TITLE.fullmatch(issue["title"].strip())
+        if match is not None and not labels(issue) & {OBJECTIVE_LABEL, KEY_RESULT_LABEL}:
             warnings.append(
-                f"{identifier} was removed from the roadmap ({removed[0]})"
-                f" but is used again by {live[0]}"
+                f"{issue['url']}: {match['id']} has neither the {OBJECTIVE_LABEL} nor the"
+                f" {KEY_RESULT_LABEL} label, so it is not part of the roadmap"
             )
 
+    numbers_used = defaultdict(set)
+    for objective in objectives:
+        numbers_used["O"].add(id_number(objective))
+        for key_result in objective["key_results"]:
+            numbers_used[f"R{id_number(objective)}."].add(id_number(key_result))
     for prefix, numbers in numbers_used.items():
         for number in range(1, max(numbers)):
             if number not in numbers:
                 warnings.append(f"{prefix}{number} was skipped: no issue has that identifier")
 
     for objective in objectives:
-        count = len(objective["key_results"])
-        if count == 0 or count > MAX_KEY_RESULTS:
-            warnings.append(
-                f"{objective['id']} has {count} key results;"
-                f" objectives should have between 1 and {MAX_KEY_RESULTS}"
-            )
+        if "not_planned" in objective:
+            continue
+        planned = False
+        for key_result in objective["key_results"]:
+            if "not_planned" not in key_result:
+                planned = True
+        if not planned:
+            warnings.append(f"{objective['id']} has no planned key results")
     return warnings
 
 
-def pull(repo, project, path):
+def pull():
     """Print any warnings and write the snapshot of the roadmap, unless it has not changed."""
-    objectives, warnings = build_roadmap(fetch_issues(repo), fetch_board(project))
-    for warning in warnings:
+    issues = fetch_issues(REPOSITORY)
+    objectives = build_roadmap(issues, fetch_board(PROJECT))
+    for warning in find_warnings(issues, objectives):
         print(warning)
 
-    if Path(path).exists():
-        old = load(path)
-        same_source = old.get("repository") == repo and old.get("project") == project
-        if same_source and old["objectives"] == objectives:
+    # Leave the file alone, including its date, if only the date would change.
+    if SNAPSHOT.exists():
+        old = load(SNAPSHOT)
+        old.pop("as_of")
+        if old == {"objectives": objectives}:
             return
-    snapshot = {
-        "repository": repo,
-        "project": project,
-        "as_of": datetime.date.today(),
-        "objectives": objectives,
-    }
-    with Path(path).open("w") as f:
-        f.write("# Written by roadmap.py pull from GitHub; do not edit.\n")
+    snapshot = {"as_of": datetime.date.today(), "objectives": objectives}
+    with SNAPSHOT.open("w") as f:
+        f.write("# Written by roadmap.py from GitHub; do not edit.\n")
         yaml.dump(snapshot, f)
 
 
 def load(path):
-    return yaml.load(Path(path).read_text())
+    return yaml.load(path.read_text())
 
 
-def render(snapshot, text):
+def render():
     """Return the markdown page from the snapshot and the page wording."""
     env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
+        loader=jinja2.FileSystemLoader(HERE / "templates"),
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=True,
         undefined=jinja2.StrictUndefined,
     )
-    # Ranked objectives come first, in rank order, then the rest in identifier order.
-    # The template lists completed objectives separately.
+    snapshot = load(SNAPSHOT)
+    # Open objectives are listed with the ranked ones first, in rank order, and the
+    # unranked ones after them in identifier order.
     ranked = []
-    others = []
+    unranked = []
+    completed = []
+    not_planned = []
     for objective in snapshot["objectives"]:
-        if "rank" in objective:
+        if "completed" in objective:
+            completed.append(objective)
+        elif "not_planned" in objective:
+            not_planned.append(objective)
+        elif "rank" in objective:
             ranked.append(objective)
         else:
-            others.append(objective)
+            unranked.append(objective)
     ranked.sort(key=lambda objective: objective["rank"])
     template = env.get_template("roadmap.md")
     return template.render(
-        doc=snapshot, text=text, objectives=ranked + others, n_ranked=len(ranked)
+        as_of=snapshot["as_of"],
+        project=PROJECT,
+        text=load(TEXT),
+        open_objectives=ranked + unranked,
+        completed=completed,
+        not_planned=not_planned,
+        n_ranked=len(ranked),
     )
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    commands = parser.add_subparsers(dest="command", required=True)
-    pull_parser = commands.add_parser("pull")
-    pull_parser.add_argument("repo", help="the repository holding the issues, as OWNER/NAME")
-    pull_parser.add_argument("project", help="URL of the GitHub project board")
-    pull_parser.add_argument("yaml", help="the snapshot file to write")
-    render_parser = commands.add_parser("render")
-    render_parser.add_argument("yaml", help="the snapshot file")
-    render_parser.add_argument("output", help="markdown file to write")
-    render_parser.add_argument(
-        "--text", help="wording file; default: text.yaml next to the snapshot"
-    )
-    args = parser.parse_args()
-
-    if args.command == "pull":
-        pull(args.repo, args.project, args.yaml)
-    else:
-        text = load(args.text or Path(args.yaml).with_name("text.yaml"))
-        Path(args.output).write_text(render(load(args.yaml), text))
 
 
 if __name__ == "__main__":
-    main()
+    pull()

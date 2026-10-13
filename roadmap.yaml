@@ -1,6 +1,4 @@
-# Written by roadmap.py pull from GitHub; do not edit.
-repository: astrofrog/astropy-roadmap-test
-project: https://github.com/users/astrofrog/projects/5
+# Written by roadmap.py from GitHub; do not edit.
 as_of: 2026-10-13
 objectives:
 - id: O1

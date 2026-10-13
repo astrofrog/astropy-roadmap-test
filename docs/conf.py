@@ -12,11 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import roadmap
 
-text = roadmap.load(ROOT / "text.yaml")
-markdown = roadmap.render(roadmap.load(ROOT / "roadmap.yaml"), text)
-Path(__file__).with_name("index.md").write_text(markdown)
+Path(__file__).with_name("index.md").write_text(roadmap.render())
 
-project = text["title"]
+project = roadmap.load(roadmap.TEXT)["title"]
 copyright = "The Astropy Developers"
 extensions = ["myst_parser"]
 myst_heading_anchors = 3
