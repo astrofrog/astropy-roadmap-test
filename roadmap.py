@@ -6,7 +6,7 @@
 The roadmap lives in the issues of the GitHub repository set in REPOSITORY. Every issue with the
 ``objective`` label is an objective, titled with its identifier such as
 ``O3: ...``. Every issue with the ``key result`` label is a key result, titled
-``R3.1: ...``, ``R3.2: ...`` and so on, and is a sub-issue of its objective.
+``KR3.1: ...``, ``KR3.2: ...`` and so on, and is a sub-issue of its objective.
 Identifiers are never renumbered or reused. An issue closed as completed marks
 its entry done, and one closed for any other reason marks it not planned; both
 stay in the roadmap as a record. An issue opened by mistake is taken out of the
@@ -46,7 +46,7 @@ yaml.width = 10**6
 PROJECT_URL = re.compile(
     r"https://github\.com/(?P<owner>users|orgs)/(?P<login>[^/]+)/projects/(?P<number>\d+)/?"
 )
-IDENTIFIER = re.compile(r"(?P<prefix>O|R\d+\.)(?P<number>\d+)")
+IDENTIFIER = re.compile(r"(?P<prefix>O|KR\d+\.)(?P<number>\d+)")
 TITLE = re.compile(rf"(?P<id>{IDENTIFIER.pattern}):\s*(?P<title>.+)")
 OBJECTIVE_LABEL = "objective"
 KEY_RESULT_LABEL = "key result"
@@ -157,7 +157,7 @@ def is_open(entry):
 
 
 def id_number(entry):
-    """Return the last number in an entry's identifier: 3 for O3, 2 for R3.2."""
+    """Return the last number in an entry's identifier: 3 for O3, 2 for KR3.2."""
     return int(IDENTIFIER.fullmatch(entry["id"])["number"])
 
 
@@ -183,7 +183,7 @@ def build_roadmap(issues, board):
             if match is None or match["prefix"] == "O":
                 errors.append(
                     f"{issue['url']}: {issue['title']!r} should start with"
-                    " an identifier such as R1.1:"
+                    " an identifier such as KR1.1:"
                 )
             else:
                 key_result_issues.append((issue, match))
@@ -198,10 +198,10 @@ def build_roadmap(issues, board):
             objective = objectives_by_url.get(parent["url"])
         if objective is None:
             errors.append(f"{issue['url']}: {match['id']} is not a sub-issue of an objective")
-        elif match["prefix"] != f"R{id_number(objective)}.":
+        elif match["prefix"] != f"KR{id_number(objective)}.":
             errors.append(
                 f"{issue['url']}: {match['id']} is a key result of {objective['id']},"
-                f" so its identifier should start with R{id_number(objective)}."
+                f" so its identifier should start with KR{id_number(objective)}."
             )
         else:
             key_results_by_url[parent["url"]].append(make_entry(issue, match))
@@ -250,7 +250,7 @@ def find_warnings(issues, objectives):
     for objective in objectives:
         numbers_used["O"].add(id_number(objective))
         for key_result in objective["key_results"]:
-            numbers_used[f"R{id_number(objective)}."].add(id_number(key_result))
+            numbers_used[f"KR{id_number(objective)}."].add(id_number(key_result))
     for prefix, numbers in numbers_used.items():
         for number in range(1, max(numbers)):
             if number not in numbers:

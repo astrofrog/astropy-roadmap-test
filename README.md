@@ -5,8 +5,8 @@ Astropy Strategic Planning and Organizing Committee (SPOC).
 
 The roadmap lives in the issues of this repository. Each objective is an issue with the
 `objective` label whose title starts with its identifier, such as `O3: ...`, and each of
-its key results is a sub-issue with the `key result` label, titled `R3.1: ...`,
-`R3.2: ...` and so on. Identifiers are chosen by hand, take the next unused number, and are
+its key results is a sub-issue with the `key result` label, titled `KR3.1: ...`,
+`KR3.2: ...` and so on. Identifiers are chosen by hand, take the next unused number, and are
 never renumbered or reused. The SPOC ranks the open objectives by ordering them on the
 roadmap project board; objectives not on the board are unranked. Closing an issue as
 completed marks its entry done, and closing it as not planned keeps it in the roadmap,
