@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Snapshot the roadmap from GitHub and render it.
 
-    python roadmap.py pull PROJECT_URL roadmap.yaml [--dry-run]
+    python roadmap.py pull PROJECT_URL roadmap.yaml
     python roadmap.py render roadmap.yaml roadmap.md
 
 The roadmap lives in GitHub. Every issue on the project board is an objective,
@@ -11,11 +11,11 @@ its key results; identifiers are never renumbered or reused. An issue closed as
 completed marks its entry done, and one closed for any other reason removes it
 from the roadmap. Open objectives are ranked by their order on the board.
 
-``pull`` writes all of this to a YAML snapshot, printing one line per change,
-and exits without writing if an identifier is missing or wrong. ``render``
-writes the markdown page from the snapshot and the page wording in
-``text.yaml`` next to it; the documentation build in ``docs/`` calls it. ``gh``
-must be authenticated with the ``read:project`` scope for ``pull``.
+``pull`` writes all of this to a YAML snapshot, leaving the file alone if
+nothing has changed, and exits without writing if an identifier is missing or
+wrong. ``render`` writes the markdown page from the snapshot and the page
+wording in ``text.yaml`` next to it; the documentation build in ``docs/`` calls
+it. ``gh`` must be authenticated with the ``read:project`` scope for ``pull``.
 """
 
 import argparse
@@ -33,130 +33,136 @@ yaml.sort_base_mapping_type_on_output = False
 yaml.default_flow_style = False
 yaml.width = 10**6
 
-PROJECT_URL = re.compile(r"https://github\.com/(users|orgs)/([^/]+)/projects/(\d+)/?")
-TITLE = re.compile(r"(O\d+|R\d+\.\d+):\s*(.+)", re.DOTALL)
+PROJECT_URL = re.compile(
+    r"https://github\.com/(?P<owner>users|orgs)/(?P<login>[^/]+)/projects/(?P<number>\d+)/?"
+)
+TITLE = re.compile(r"(?P<id>O\d+|R\d+\.\d+):\s*(?P<title>.+)")
+
+# Fetches the issues on a project board in board order, each with its sub-issues.
+# The owner field, user or organization, is filled in before the query is sent.
 QUERY = """
 query($login: String!, $number: Int!) {
-  %s(login: $login) { projectV2(number: $number) {
-    items(first: 100, orderBy: {field: POSITION, direction: ASC}) {
-      pageInfo { hasNextPage }
-      nodes { content { ...entry ... on Issue { subIssues(first: 50) { nodes { ...entry } } } } }
+  %s(login: $login) {
+    projectV2(number: $number) {
+      items(first: 100, orderBy: {field: POSITION, direction: ASC}) {
+        pageInfo { hasNextPage }
+        nodes {
+          content {
+            ...entry
+            ... on Issue { subIssues(first: 50) { nodes { ...entry } } }
+          }
+        }
+      }
     }
-  } }
+  }
 }
 fragment entry on Issue { title url state stateReason closedAt }
 """
 
 
-def fetch(project):
+def fetch_board(project):
     """Return the issues on the project board, in board order, with their sub-issues."""
-    m = PROJECT_URL.fullmatch(project)
-    if not m:
+    match = PROJECT_URL.fullmatch(project)
+    if match is None:
         raise SystemExit(
             f"{project}: expected a URL such as https://github.com/orgs/NAME/projects/1"
         )
-    owner = {"users": "user", "orgs": "organization"}[m[1]]
-    result = subprocess.run(
-        ["gh", "api", "graphql", "-f", f"query={QUERY % owner}"]
-        + ["-f", f"login={m[2]}", "-F", f"number={m[3]}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode:
+    owner = "user" if match["owner"] == "users" else "organization"
+    command = [
+        "gh", "api", "graphql",
+        "-f", f"query={QUERY % owner}",
+        "-f", f"login={match['login']}",
+        "-F", f"number={match['number']}",
+    ]  # fmt: skip
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
         raise SystemExit(f"reading {project} failed:\n{result.stderr.strip()}")
+
     items = json.loads(result.stdout)["data"][owner]["projectV2"]["items"]
     if items["pageInfo"]["hasNextPage"]:
         raise SystemExit(f"{project}: more than 100 items on the board")
-    # Draft issues and pull requests have no issue content and are skipped.
-    return [node["content"] for node in items["nodes"] if "title" in (node["content"] or {})]
+    issues = []
+    for item in items["nodes"]:
+        # Draft issues and pull requests come back empty and are skipped.
+        if item["content"]:
+            issues.append(item["content"])
+    return issues
 
 
-def pull(project, path, dry):
-    """Write the snapshot of the roadmap on GitHub, printing one line per change."""
+def make_entry(issue, prefix, errors):
+    """Return the snapshot entry for an issue, or None if it is not part of the roadmap.
+
+    The identifier in the title must start with ``prefix``: ``O`` for an
+    objective, or for example ``R3.`` for a key result of O3. A problem with
+    the title is added to ``errors``.
+    """
+    closed = issue["state"] == "CLOSED"
+    if closed and issue["stateReason"] != "COMPLETED":
+        return None
+    match = TITLE.fullmatch(issue["title"].strip())
+    if match is None or not match["id"].startswith(prefix):
+        errors.append(f"{issue['url']}: {issue['title']!r} should start with {prefix}<number>:")
+        return None
+    entry = {"id": match["id"], "title": match["title"], "url": issue["url"]}
+    if closed:
+        entry["completed"] = datetime.date.fromisoformat(issue["closedAt"][:10])
+    return entry
+
+
+def id_number(entry):
+    """Return the last number in an entry's identifier: 3 for O3, 2 for R3.2."""
+    return int(re.findall(r"\d+", entry["id"])[-1])
+
+
+def make_objectives(issues):
+    """Return the snapshot's objectives, or exit listing every problem with the issues."""
     errors = []
-
-    def entry(issue, kind):
-        """Return the snapshot entry for an issue, or None if it is not part of the roadmap."""
-        if issue["state"] == "CLOSED" and issue["stateReason"] != "COMPLETED":
-            return None
-        m = TITLE.fullmatch(issue["title"].strip())
-        if not m or not m[1].startswith(kind):
-            errors.append(f"{issue['url']}: {issue['title']!r} should start with {kind}<number>:")
-            return None
-        found = {"id": m[1], "title": m[2], "url": issue["url"]}
-        if issue["state"] == "CLOSED":
-            found["completed"] = datetime.date.fromisoformat(issue["closedAt"][:10])
-        return found
-
     objectives = []
     rank = 0
-    for issue in fetch(project):
-        if not (obj := entry(issue, "O")):
+    for issue in issues:
+        objective = make_entry(issue, "O", errors)
+        if objective is None:
             continue
-        if "completed" not in obj:
+        if "completed" not in objective:
             rank += 1
-            obj["rank"] = rank
-        obj["key_results"] = [
-            kr for sub in issue["subIssues"]["nodes"] if (kr := entry(sub, f"R{obj['id'][1:]}."))
-        ]
-        obj["key_results"].sort(key=lambda kr: int(kr["id"].split(".")[1]))
-        objectives.append(obj)
-    objectives.sort(key=lambda obj: int(obj["id"][1:]))
-    ids = [e["id"] for obj in objectives for e in [obj, *obj["key_results"]]]
-    errors += [
-        f"{i} is used by more than one issue" for i in dict.fromkeys(ids) if ids.count(i) > 1
-    ]
+            objective["rank"] = rank
+        key_results = []
+        for sub_issue in issue["subIssues"]["nodes"]:
+            key_result = make_entry(sub_issue, f"R{id_number(objective)}.", errors)
+            if key_result is not None:
+                key_results.append(key_result)
+        objective["key_results"] = sorted(key_results, key=id_number)
+        objectives.append(objective)
+
+    seen = set()
+    for objective in objectives:
+        for entry in [objective, *objective["key_results"]]:
+            if entry["id"] in seen:
+                errors.append(f"{entry['id']} is used by more than one issue")
+            seen.add(entry["id"])
     if errors:
         raise SystemExit("\n".join(errors))
-
-    old = load(path) if Path(path).exists() else {}
-    if old.get("project") == project and old.get("objectives") == objectives:
-        print("snapshot already up to date")
-        return
-
-    def by_id(objectives):
-        return {e["id"]: e for obj in objectives for e in [obj, *obj["key_results"]]}
-
-    before, after = by_id(old.get("objectives", [])), by_id(objectives)
-    for i, e in after.items():
-        b = before.get(i, {})
-        if not b:
-            print(f"{i} added: {e['title']}")
-        elif b["title"] != e["title"]:
-            print(f"{i} reworded: {e['title']}")
-        if b.get("url") not in (None, e["url"]):
-            print(f"{i} is now tracked in {e['url']}")
-        if "completed" in e and b.get("completed") != e["completed"]:
-            print(f"{i} completed on {e['completed']}")
-        elif "completed" in b and "completed" not in e:
-            print(f"{i} reopened")
-    for i in before:
-        if i not in after:
-            print(f"{i} removed")
-
-    def ranking(objectives):
-        return [
-            obj["id"] for obj in sorted(objectives, key=lambda o: o.get("rank", 0)) if "rank" in obj
-        ]
-
-    if (order := ranking(objectives)) != ranking(old.get("objectives", [])):
-        print(f"ranking is now {', '.join(order)}")
-    if not dry:
-        with Path(path).open("w") as f:
-            f.write("# Written by roadmap.py pull from GitHub; do not edit.\n")
-            yaml.dump({"project": project, "as_of": today(), "objectives": objectives}, f)
+    return sorted(objectives, key=id_number)
 
 
-def today():
-    return datetime.datetime.now(tz=datetime.UTC).date()
+def pull(project, path):
+    """Write the snapshot of the roadmap on GitHub, unless it has not changed."""
+    objectives = make_objectives(fetch_board(project))
+    if Path(path).exists():
+        old = load(path)
+        if old["project"] == project and old["objectives"] == objectives:
+            return
+    snapshot = {"project": project, "as_of": datetime.date.today(), "objectives": objectives}
+    with Path(path).open("w") as f:
+        f.write("# Written by roadmap.py pull from GitHub; do not edit.\n")
+        yaml.dump(snapshot, f)
 
 
 def load(path):
     return yaml.load(Path(path).read_text())
 
 
-def render(doc, text):
+def render(snapshot, text):
     """Return the markdown page from the snapshot and the page wording."""
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(Path(__file__).resolve().parent / "templates"),
@@ -165,32 +171,31 @@ def render(doc, text):
         keep_trailing_newline=True,
         undefined=jinja2.StrictUndefined,
     )
-    objectives = sorted(doc["objectives"], key=lambda obj: obj.get("rank", 0))
-    return env.get_template("roadmap.md").render(
-        doc=doc,
-        text=text,
-        objectives=objectives,
-        n_ranked=sum("rank" in obj for obj in objectives),
-    )
+    # Completed objectives have no rank; the template lists them separately.
+    objectives = sorted(snapshot["objectives"], key=lambda objective: objective.get("rank", 0))
+    n_ranked = sum("rank" in objective for objective in objectives)
+    template = env.get_template("roadmap.md")
+    return template.render(doc=snapshot, text=text, objectives=objectives, n_ranked=n_ranked)
 
 
 def main():
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    sub = p.add_subparsers(dest="command", required=True)
-    sp = sub.add_parser("pull")
-    sp.add_argument("project", help="URL of the GitHub project board holding the objectives")
-    sp.add_argument("yaml", help="the snapshot file to write")
-    sp.add_argument("--dry-run", action="store_true", help="report changes without writing")
-    sp = sub.add_parser("render")
-    sp.add_argument("yaml", help="the snapshot file")
-    sp.add_argument("output", help="markdown file to write")
-    sp.add_argument("--text", help="the wording file; default: text.yaml next to the snapshot")
-    args = p.parse_args()
+    commands = parser.add_subparsers(dest="command", required=True)
+    pull_parser = commands.add_parser("pull")
+    pull_parser.add_argument("project", help="URL of the GitHub project board")
+    pull_parser.add_argument("yaml", help="the snapshot file to write")
+    render_parser = commands.add_parser("render")
+    render_parser.add_argument("yaml", help="the snapshot file")
+    render_parser.add_argument("output", help="markdown file to write")
+    render_parser.add_argument(
+        "--text", help="wording file; default: text.yaml next to the snapshot"
+    )
+    args = parser.parse_args()
 
     if args.command == "pull":
-        pull(args.project, args.yaml, args.dry_run)
+        pull(args.project, args.yaml)
     else:
         text = load(args.text or Path(args.yaml).with_name("text.yaml"))
         Path(args.output).write_text(render(load(args.yaml), text))

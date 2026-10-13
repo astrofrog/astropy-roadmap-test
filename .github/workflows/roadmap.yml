@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install ruamel.yaml jinja2
-      - run: python roadmap.py pull https://github.com/users/astrofrog/projects/5 roadmap.yaml | tee changes.md
+      - run: python roadmap.py pull https://github.com/users/astrofrog/projects/5 roadmap.yaml
         env:
           GH_TOKEN: ${{ secrets.ROADMAP_TOKEN }}
       - uses: peter-evans/create-pull-request@v7
@@ -35,5 +35,5 @@ jobs:
           add-paths: roadmap.yaml
           commit-message: Record the roadmap from GitHub
           title: Record the roadmap from GitHub
-          body-path: changes.md
+          body: The roadmap issues or project board changed; see the diff of roadmap.yaml.
           delete-branch: true
