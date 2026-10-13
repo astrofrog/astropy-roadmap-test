@@ -180,7 +180,7 @@ def build_roadmap(issues, board):
             else:
                 objectives_by_url[issue["url"]] = make_entry(issue, match)
         elif KEY_RESULT_LABEL in labels(issue):
-            if match is None or match["prefix"] == "O":
+            if match is None or not match["prefix"].startswith("KR"):
                 errors.append(
                     f"{issue['url']}: {issue['title']!r} should start with"
                     " an identifier such as KR1.1:"
