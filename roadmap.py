@@ -168,6 +168,11 @@ def build_roadmap(issues, board):
     # Objectives whose title is wrong; their key results are skipped, not reported too.
     broken_objective_urls = set()
     key_result_issues = []
+
+    # First, we loop through issues which are labelled as objectives or key
+    # results and make sure their titles are formatted correctly, either as
+    # O<N>: Title or KR<M>: Title respectively
+
     for issue in issues:
         match = TITLE.fullmatch(issue["title"].strip())
         if OBJECTIVE_LABEL in labels(issue):
@@ -188,8 +193,11 @@ def build_roadmap(issues, board):
             else:
                 key_result_issues.append((issue, match))
 
+    # We now iterate through key results and check that the parent issue
+    # (which should be an objective) is set and that it is the correct one
+
     key_results_by_url = defaultdict(list)
-    for issue, match in key_result_issues:
+    for issue, title in key_result_issues:
         parent = issue["parent"]
         objective = None
         if parent is not None:
@@ -197,46 +205,64 @@ def build_roadmap(issues, board):
                 continue
             objective = objectives_by_url.get(parent["url"])
         if objective is None:
-            errors.append(f"{issue['url']}: {match['id']} is not a sub-issue of an objective")
-        elif match["prefix"] != f"KR{id_number(objective)}.":
+            errors.append(f"{issue['url']}: {title['id']} is not a sub-issue of an objective")
+        elif title["prefix"] != f"KR{id_number(objective)}.":
             errors.append(
-                f"{issue['url']}: {match['id']} is a key result of {objective['id']},"
+                f"{issue['url']}: {title['id']} is a key result of {objective['id']},"
                 f" so its identifier should start with KR{id_number(objective)}."
             )
         else:
-            key_results_by_url[parent["url"]].append(make_entry(issue, match))
+            key_results_by_url[parent["url"]].append(make_entry(issue, title))
+
+    # We now construct a dictionary of all URLs to objectives and key results
 
     urls_by_id = defaultdict(list)
     for url, objective in objectives_by_url.items():
         urls_by_id[objective["id"]].append(url)
         for key_result in key_results_by_url[url]:
             urls_by_id[key_result["id"]].append(key_result["url"])
+
+    # Check that each identifier is used just once
+
     for identifier, urls in urls_by_id.items():
         if len(urls) > 1:
             errors.append(f"{identifier} is used by more than one issue: {', '.join(urls)}")
+
+    # At this point, any issues above are fatal, we cannot proceed
+
     if errors:
         raise SystemExit("\n".join(errors))
 
     # Open objectives on the board are ranked in board order; the rest are unranked.
+
     position = {url: index for index, url in enumerate(board)}
     ranked = []
     for url, objective in objectives_by_url.items():
         if is_open(objective) and url in position:
             ranked.append(objective)
+
     ranked.sort(key=lambda objective: position[objective["url"]])
+
     for rank, objective in enumerate(ranked, 1):
         objective["rank"] = rank
 
-    # The key results are added last so that they come last in each entry of the file.
+    # The key results are added last so that they come last in each objective
+    # after the objective-level values.
+
     objectives = []
     for url, objective in objectives_by_url.items():
         objective["key_results"] = sorted(key_results_by_url[url], key=id_number)
         objectives.append(objective)
+
     return sorted(objectives, key=id_number)
 
 
-def find_warnings(issues, objectives):
-    """Return warnings about issues and objectives that are allowed but look wrong."""
+def check_warnings(issues, objectives):
+    """Check for warnings about issues and objectives that are allowed but look wrong."""
+
+    # Check for issues that look like they have titles in the right format but
+    # aren't labelled as objectives or key results
+
     warnings = []
     for issue in issues:
         match = TITLE.fullmatch(issue["title"].strip())
@@ -246,15 +272,21 @@ def find_warnings(issues, objectives):
                 f" {KEY_RESULT_LABEL} label, so it is not part of the roadmap"
             )
 
+    # Check for objectives or key results that are missing in numerical order, for
+    # example O1, O2, O4 is missing O3.
+
     numbers_used = defaultdict(set)
     for objective in objectives:
         numbers_used["O"].add(id_number(objective))
         for key_result in objective["key_results"]:
             numbers_used[f"KR{id_number(objective)}."].add(id_number(key_result))
+
     for prefix, numbers in numbers_used.items():
         for number in range(1, max(numbers)):
             if number not in numbers:
                 warnings.append(f"{prefix}{number} was skipped: no issue has that identifier")
+
+    # Check for objectives that don't have any planned or completed key results
 
     for objective in objectives:
         if "not_planned" in objective:
@@ -265,14 +297,17 @@ def find_warnings(issues, objectives):
                 planned = True
         if not planned:
             warnings.append(f"{objective['id']} has no planned key results")
+
     return warnings
 
 
 def pull():
     """Print any warnings and write the snapshot of the roadmap, unless it has not changed."""
+
     issues = fetch_issues(REPOSITORY)
     objectives = build_roadmap(issues, fetch_board(PROJECT))
-    for warning in find_warnings(issues, objectives):
+
+    for warning in check_warnings(issues, objectives):
         print(warning)
 
     # Leave the file alone, including its date, if only the date would change.
@@ -281,7 +316,9 @@ def pull():
         old.pop("as_of")
         if old == {"objectives": objectives}:
             return
+
     snapshot = {"as_of": datetime.date.today(), "objectives": objectives}
+
     with SNAPSHOT.open("w") as f:
         f.write("# Written by roadmap.py from GitHub; do not edit.\n")
         yaml.dump(snapshot, f)
@@ -293,6 +330,7 @@ def load(path):
 
 def render():
     """Return the markdown page from the snapshot and the page wording."""
+
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(HERE / "templates"),
         trim_blocks=True,
@@ -301,12 +339,14 @@ def render():
         undefined=jinja2.StrictUndefined,
     )
     snapshot = load(SNAPSHOT)
+
     # Open objectives are listed with the ranked ones first, in rank order, and the
     # unranked ones after them in identifier order.
     ranked = []
     unranked = []
     completed = []
     not_planned = []
+
     for objective in snapshot["objectives"]:
         if "completed" in objective:
             completed.append(objective)
@@ -316,8 +356,11 @@ def render():
             ranked.append(objective)
         else:
             unranked.append(objective)
+
     ranked.sort(key=lambda objective: objective["rank"])
+
     template = env.get_template("roadmap.md")
+
     return template.render(
         as_of=snapshot["as_of"],
         project=PROJECT,
