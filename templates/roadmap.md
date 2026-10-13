@@ -14,7 +14,7 @@
 {% macro objective(obj) %}
 ### {{ obj.id }}: {{ obj.title }}
 
-*{% if "rank" in obj %}Rank {{ obj.rank }} of {{ n_ranked }} · {% endif %}
+*{% if "completed" not in obj %}{{ "Rank %d of %d" % (obj.rank, n_ranked) if "rank" in obj else "Unranked" }} · {% endif %}
 Tracking issue: {{ link(obj) }} · {{ obj.key_results | selectattr("completed", "defined") | list | length }} of {{ obj.key_results | length }} key results complete
 {%- if "completed" in obj %} · <span class="completed">(completed on {{ obj.completed }})</span>{% endif %}*
 
@@ -27,7 +27,7 @@ Tracking issue: {{ link(obj) }} · {{ obj.key_results | selectattr("completed", 
 {% endmacro %}
 ## Objectives
 
-Open objectives are listed in order of priority, as ranked on the [roadmap project board]({{ doc.project }}).
+Open objectives are listed in order of priority, as ranked on the [roadmap project board]({{ doc.project }}), followed by any unranked objectives.
 
 {% for obj in objectives if "completed" not in obj %}{{ objective(obj) }}{% endfor %}
 {% if objectives | selectattr("completed", "defined") | list %}

@@ -1,8 +1,9 @@
 # Records the roadmap from GitHub in roadmap.yaml.
 #
-# Weekly or on demand: read the objectives and key results from the issues on
-# the project board, write them to roadmap.yaml, and open or update a pull
-# request with the changes for the SPOC to merge. The web page is built by Read
+# Weekly or on demand: read the objectives and key results from the issues in
+# this repository and their ranking from the project board, write them to
+# roadmap.yaml, and open or update a pull request with the changes, and any
+# warnings, for the SPOC to merge. The web page is built by Read
 # the Docs from roadmap.yaml, so nothing generated is committed. If an issue
 # title is wrong, the problems are reported in a "Roadmap snapshot failed"
 # issue, which the next successful run closes.
@@ -32,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install ruamel.yaml jinja2
-      - run: python roadmap.py pull https://github.com/users/astrofrog/projects/5 roadmap.yaml 2>&1 | tee pull.log
+      - run: python roadmap.py pull ${{ github.repository }} https://github.com/users/astrofrog/projects/5 roadmap.yaml 2>&1 | tee pull.log
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.ROADMAP_TOKEN }}
@@ -62,11 +63,22 @@ jobs:
           if [ -n "$number" ]; then
             gh issue close "$number" --comment "The roadmap snapshot succeeded again."
           fi
+      - name: Write the pull request description
+        run: |
+          {
+            if [ -s pull.log ]; then
+              echo "Warnings:"
+              echo
+              sed 's/^/- /' pull.log
+              echo
+            fi
+            echo "The roadmap issues or project board changed; see the diff of roadmap.yaml."
+          } > body.md
       - uses: peter-evans/create-pull-request@v7
         with:
           branch: roadmap-snapshot
           add-paths: roadmap.yaml
           commit-message: Record the roadmap from GitHub
           title: Record the roadmap from GitHub
-          body: The roadmap issues or project board changed; see the diff of roadmap.yaml.
+          body-path: body.md
           delete-branch: true
