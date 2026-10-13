@@ -171,8 +171,7 @@ def build_roadmap(issues, board):
 
     # First, we loop through issues which are labelled as objectives or key
     # results and make sure their titles are formatted correctly, either as
-    # O<N>: Title or KR<M>: Title respectively
-
+    # O<N>: Title or KR<N>.<M>: Title respectively
     for issue in issues:
         match = TITLE.fullmatch(issue["title"].strip())
         if OBJECTIVE_LABEL in labels(issue):
@@ -195,9 +194,8 @@ def build_roadmap(issues, board):
 
     # We now iterate through key results and check that the parent issue
     # (which should be an objective) is set and that it is the correct one
-
     key_results_by_url = defaultdict(list)
-    for issue, title in key_result_issues:
+    for issue, match in key_result_issues:
         parent = issue["parent"]
         objective = None
         if parent is not None:
@@ -205,17 +203,17 @@ def build_roadmap(issues, board):
                 continue
             objective = objectives_by_url.get(parent["url"])
         if objective is None:
-            errors.append(f"{issue['url']}: {title['id']} is not a sub-issue of an objective")
-        elif title["prefix"] != f"KR{id_number(objective)}.":
+            errors.append(f"{issue['url']}: {match['id']} is not a sub-issue of an objective")
+        elif match["prefix"] != f"KR{id_number(objective)}.":
             errors.append(
-                f"{issue['url']}: {title['id']} is a key result of {objective['id']},"
+                f"{issue['url']}: {match['id']} is a key result of {objective['id']},"
                 f" so its identifier should start with KR{id_number(objective)}."
             )
         else:
-            key_results_by_url[parent["url"]].append(make_entry(issue, title))
+            key_results_by_url[parent["url"]].append(make_entry(issue, match))
 
     # We now construct a dictionary of all URLs to objectives and key results
-
+    # indexed by objective or key result ID
     urls_by_id = defaultdict(list)
     for url, objective in objectives_by_url.items():
         urls_by_id[objective["id"]].append(url)
@@ -223,18 +221,15 @@ def build_roadmap(issues, board):
             urls_by_id[key_result["id"]].append(key_result["url"])
 
     # Check that each identifier is used just once
-
     for identifier, urls in urls_by_id.items():
         if len(urls) > 1:
             errors.append(f"{identifier} is used by more than one issue: {', '.join(urls)}")
 
     # At this point, any issues above are fatal, we cannot proceed
-
     if errors:
         raise SystemExit("\n".join(errors))
 
     # Open objectives on the board are ranked in board order; the rest are unranked.
-
     position = {url: index for index, url in enumerate(board)}
     ranked = []
     for url, objective in objectives_by_url.items():
@@ -248,7 +243,6 @@ def build_roadmap(issues, board):
 
     # The key results are added last so that they come last in each objective
     # after the objective-level values.
-
     objectives = []
     for url, objective in objectives_by_url.items():
         objective["key_results"] = sorted(key_results_by_url[url], key=id_number)
@@ -262,7 +256,6 @@ def check_warnings(issues, objectives):
 
     # Check for issues that look like they have titles in the right format but
     # aren't labelled as objectives or key results
-
     warnings = []
     for issue in issues:
         match = TITLE.fullmatch(issue["title"].strip())
@@ -274,7 +267,6 @@ def check_warnings(issues, objectives):
 
     # Check for objectives or key results that are missing in numerical order, for
     # example O1, O2, O4 is missing O3.
-
     numbers_used = defaultdict(set)
     for objective in objectives:
         numbers_used["O"].add(id_number(objective))
@@ -287,7 +279,6 @@ def check_warnings(issues, objectives):
                 warnings.append(f"{prefix}{number} was skipped: no issue has that identifier")
 
     # Check for objectives that don't have any planned or completed key results
-
     for objective in objectives:
         if "not_planned" in objective:
             continue
