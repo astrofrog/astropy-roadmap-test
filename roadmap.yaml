@@ -183,3 +183,16 @@ objectives:
   - id: KR11.3
     title: Review progress on these issues at least yearly at the coordination meeting.
     url: https://github.com/astrofrog/astropy-roadmap-test/issues/52
+- id: O14
+  title: Some really new fancy feature
+  url: https://github.com/astrofrog/astropy-roadmap-test/issues/58
+  key_results:
+  - id: KR14.1
+    title: first bunch of stuff
+    url: https://github.com/astrofrog/astropy-roadmap-test/issues/59
+  - id: KR14.2
+    title: and another
+    url: https://github.com/astrofrog/astropy-roadmap-test/issues/60
+  - id: KR14.4
+    title: and another
+    url: https://github.com/astrofrog/astropy-roadmap-test/issues/61
